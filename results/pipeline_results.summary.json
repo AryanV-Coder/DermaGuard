@@ -1,0 +1,11 @@
+{
+  "total_images": 2000,
+  "quality_pass": 253,
+  "quality_fail": 1747,
+  "quality_error": 0,
+  "diagnosed_images": 253,
+  "correct_predictions": 165,
+  "incorrect_predictions": 88,
+  "skipped_re_image": 1747,
+  "accuracy_on_accepted": 65.22
+}

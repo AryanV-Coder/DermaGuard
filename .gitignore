@@ -1,0 +1,87 @@
+# ==============================================================================
+# DermaGuard — .gitignore
+# ==============================================================================
+
+# ── Byte-compiled / optimized / DLL files ─────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ── Virtual Environments ──────────────────────────────────────────────────────
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# ── Testing & Code Coverage ───────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+htmlcov/
+
+# ── Operating System & Editor Files ───────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── Jupyter Notebook Checkpoints ──────────────────────────────────────────────
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# ── Large Model Weights & Checkpoints ─────────────────────────────────────────
+*.pth
+*.pt
+*.onnx
+*.bin
+*.h5
+*.tflite
+*.ckpt
+checkpoints/
+model_extracted/
+diagnosis_model/
+
+# ── Large Archives & Raw Datasets ─────────────────────────────────────────────
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.gz
+*.bz2
+*.7z
+health-training/
+health-eval/
+Health/
+cache_shades_of_gray/
+
+# ── Secrets, Keys & Environment Variables ─────────────────────────────────────
+.env
+.env.*
+*.env
+*.key
+*.pem
+credentials.json
+api_keys.json
+
+# ── Temporary Evaluation Outputs & Logs ───────────────────────────────────────
+dermaguard_eval_output/
+dermaguard_results/
+wandb/
+runs/
+*.log
