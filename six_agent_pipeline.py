@@ -156,14 +156,14 @@ def run_six_agent_pipeline(
 
         submission_rows.append({
             "image_id": image_id,
-            "prediction": pred,
+            "predicted_label": pred,
             "decision": dec,
         })
 
         full_results.append({
             "image_id": image_id,
             "true_dx": true_dx,
-            "prediction": pred,
+            "predicted_label": pred,
             "decision": dec,
             "decision_rule": r6["decision_rule"],
             "confidence_tier": r6["confidence_tier"],
@@ -193,7 +193,7 @@ def run_six_agent_pipeline(
     # Write official submission format CSV: image_id, prediction, decision
     if api_submission_csv:
         with open(api_submission_csv, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=["image_id", "prediction", "decision"])
+            writer = csv.DictWriter(f, fieldnames=["image_id", "predicted_label", "decision"])
             writer.writeheader()
             writer.writerows(submission_rows)
 

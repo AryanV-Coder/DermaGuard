@@ -1,4 +1,4 @@
-image_id,prediction,decision
+image_id,predicted_label,decision
 ISIC_0029176,nv,RE_IMAGE
 ISIC_0029068,nv,RE_IMAGE
 ISIC_0027828,nv,RE_IMAGE
