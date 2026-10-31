@@ -140,8 +140,8 @@ class LesionAnalysisAgent:
             0.5 * (eq_diameter / 100.0)
         )
         lesion_risk = (
-            "HIGH"     if abcd_score > 1.5 else
-            "MODERATE" if abcd_score > 0.8 else
+            "HIGH"     if abcd_score > 1.40 else
+            "MODERATE" if abcd_score > 1.05 else
             "LOW"
         )
 

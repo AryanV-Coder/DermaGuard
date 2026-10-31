@@ -38,6 +38,7 @@ from reasoning_context_agent.reasoning_context_agent import ReasoningContextAgen
 from safety_agent.safety_agent import SafetyAgent
 from coordinator_agent.coordinator_agent import CoordinatorAgent
 from explanation.gemini_explainer import GeminiExplainer
+from explanation.gradcam import GradCAMExplainer
 
 # Optional DiagnosisAgent import (handles missing torch gracefully)
 try:
@@ -76,7 +77,13 @@ class DermaGuardGraph:
 
         self.graph = self._build_graph()
         self.app = self.graph.compile()
-        print("[DermaGuardGraph] LangGraph StateGraph compiled successfully.\n")
+
+        # Initialize Grad-CAM Explainer
+        diag_model = None
+        if self.a2_diagnosis and hasattr(self.a2_diagnosis, "models") and len(self.a2_diagnosis.models) > 0:
+            diag_model = self.a2_diagnosis.models[0][1]
+        self.gradcam = GradCAMExplainer(model=diag_model)
+        print("[DermaGuardGraph] LangGraph StateGraph compiled & Grad-CAM engine ready.\n")
 
     # ── Node Implementations ──────────────────────────────────────────────────
 
@@ -465,6 +472,9 @@ class DermaGuardGraph:
 
             # ── LLM Clinical Explanation ──────────────────────────────────────
             "clinical_explanation": state.get("clinical_explanation", ""),
+
+            # ── Grad-CAM Visual Explainability ────────────────────────────────
+            "visualizations": state.get("visualizations", {}),
         }
 
     def run_api(
@@ -474,8 +484,31 @@ class DermaGuardGraph:
         age: Optional[float] = None,
         sex: Optional[str] = None,
         localization: Optional[str] = None,
+        include_gradcam: bool = True,
     ) -> Dict[str, Any]:
-        """Convenience method that runs pipeline and returns structured API dictionary."""
+        """Convenience method that runs pipeline, generates Grad-CAM heatmap, and returns structured API dictionary."""
         state = self.run(image_path=image_path, image_id=image_id, age=age, sex=sex, localization=localization)
+        
+        # Generate Grad-CAM heatmap if requested
+        if include_gradcam and Path(image_path).exists():
+            try:
+                target_cls = state.get("predicted_label") or state.get("predicted_class", "nv")
+                cam_res = self.gradcam.generate_heatmap(
+                    image_input=image_path,
+                    target_class_name=target_cls,
+                )
+                state["visualizations"] = {
+                    "gradcam_overlay": cam_res.get("visualizations", {}).get("gradcam_overlay", ""),
+                    "original_image":  cam_res.get("visualizations", {}).get("original_image", ""),
+                    "pure_heatmap":    cam_res.get("visualizations", {}).get("pure_heatmap", ""),
+                    "focus_inside_lesion_pct": cam_res.get("focus_inside_lesion_pct", 0.0),
+                    "peak_attention_coords": cam_res.get("peak_attention_coords", {}),
+                    "target_class":    cam_res.get("target_class", target_cls),
+                    "target_class_name": cam_res.get("target_class_name", ""),
+                    "description":     cam_res.get("description", ""),
+                }
+            except Exception as e:
+                state["visualizations"] = {"error": str(e)}
+
         return self.get_api_response(state)
 

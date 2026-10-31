@@ -178,8 +178,8 @@ class DiagnosisAgent:
             mel_prob = float(avg_probs[LABEL_MAP["mel"]])
             malignant_prob = float(sum(avg_probs[LABEL_MAP[c]] for c in MALIGNANT_CLASSES))
 
-            # Flag melanoma if predicted top-1 is mel OR mel_prob >= 0.18 (safety barrier)
-            mel_flag = (top_class == "mel") or (mel_prob >= 0.18)
+            # Flag melanoma if predicted top-1 is mel OR mel_prob >= 0.25 (calibrated cancer safety barrier)
+            mel_flag = (top_class == "mel") or (mel_prob >= 0.25)
 
             probs_dict = {IDX_TO_CLASS[i]: round(float(p), 4) for i, p in enumerate(avg_probs)}
 

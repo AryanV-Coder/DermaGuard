@@ -27,10 +27,10 @@ MALIGNANT_CLASSES = {"mel", "bcc", "akiec"}
 BENIGN_CLASSES    = {"nv", "df", "bkl", "vasc"}
 
 # ── Calibrated Safety Thresholds (matches eval_pipeline.ipynb) ────────────────
-MEL_THRESH    = 0.18   # Lowered from 0.30 to ensure 0 missed melanomas in Auto-Triage
-MALIGN_THRESH = 0.25   # Aggregate malignancy threshold for early cancer safety
+MEL_THRESH    = 0.25   # Clinically calibrated melanoma barrier (prevents background noise false alarms on benign lesions)
+MALIGN_THRESH = 0.35   # Aggregate cancer barrier (mel + bcc + akiec)
 CONF_THRESH   = 0.40   # Minimum acceptable confidence for autonomous clearance
-SUSPICION_HIGH = 1.50   # ABCD composite threshold for high visual suspicion
+SUSPICION_HIGH = 1.40  # ABCD composite threshold for high visual suspicion
 
 
 class SafetyAgent:
@@ -117,7 +117,15 @@ class SafetyAgent:
             checks["high_visual_suspicion"] = {"fired": False, "reason": "OK"}
 
         # ── 5. Convergent Multi-Agent Risk ─────────────────────────────────────
-        if suspicion_level in ("MODERATE", "HIGH") and risk_indicator in ("MODERATE", "HIGH"):
+        # Only refer if at least one factor is genuinely HIGH,
+        # OR if both are MODERATE and diagnostic confidence is low/uncertain (< 0.65) or non-benign.
+        # Confident benign lesions with low melanoma probability pass safely.
+        is_high_convergent = (suspicion_level == "HIGH" and risk_indicator in ("MODERATE", "HIGH")) or \
+                             (risk_indicator == "HIGH" and suspicion_level in ("MODERATE", "HIGH"))
+        is_mod_convergent  = (suspicion_level == "MODERATE" and risk_indicator == "MODERATE") and \
+                             (confidence < 0.65 or pred_class not in BENIGN_CLASSES)
+
+        if is_high_convergent or is_mod_convergent:
             reason = f"Convergent risk: visual suspicion is {suspicion_level} and patient context risk is {risk_indicator}."
             veto_triggers.append(("CONVERGENT_RISK", reason))
             checks["convergent_risk"] = {"fired": True, "reason": reason}
