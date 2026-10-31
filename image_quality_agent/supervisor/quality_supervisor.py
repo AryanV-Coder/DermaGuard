@@ -134,13 +134,29 @@ class QualitySupervisor:
             else "<numpy array>"
         )
 
+        quality_pass = (fusion_result["overall_status"] == "PASS")
+        reason = fusion_result["hard_fail_reason"] or (
+            fusion_result["recommendation"] if not quality_pass else "pass"
+        )
+        blur_val = float(blur_result.get("laplacian_var", 0.0))
+        bright_val = float(lighting_result.get("mean_brightness", 0.0))
+        glare_val = float(glare_result.get("glare_pixel_ratio", 0.0))
+        occlude_val = float(lighting_result.get("dark_pixel_ratio", 0.0))
+
         return {
+            "quality_pass":   quality_pass,
+            "reason":         reason,
+            "blur":           round(blur_val, 2),
+            "brightness":     round(bright_val, 2),
+            "glare_ratio":    round(glare_val, 4),
+            "occlude_ratio":  round(occlude_val, 4),
             "image": {
                 "source":         source_str,
                 "original_shape": list(img_data["original_shape"]),
             },
             "overall": {
                 "status":              fusion_result["overall_status"],
+                "quality_pass":        quality_pass,
                 "score":               fusion_result["overall_score"],
                 "recommendation":      fusion_result["recommendation"],
                 "hard_fail_triggered": fusion_result["hard_fail_triggered"],
@@ -157,6 +173,10 @@ class QualitySupervisor:
             "processing_time_s": elapsed,
         }
 
+    def __call__(self, source: Union[str, Path, np.ndarray]) -> Dict[str, Any]:
+        """Allows QualitySupervisor to be invoked as a callable function (agent1(img_path))."""
+        return self.evaluate(source)
+
     def evaluate_and_print(self, source: Union[str, Path, np.ndarray]) -> Dict[str, Any]:
         """Convenience wrapper: evaluate + pretty-print JSON to stdout."""
         report = self.evaluate(source)
@@ -172,9 +192,16 @@ class QualitySupervisor:
     ) -> Dict[str, Any]:
         source_str = str(source) if not isinstance(source, np.ndarray) else "<numpy array>"
         return {
+            "quality_pass":    False,
+            "reason":          error,
+            "blur":            0.0,
+            "brightness":      0.0,
+            "glare_ratio":     1.0,
+            "occlude_ratio":   1.0,
             "image":   {"source": source_str, "original_shape": None},
             "overall": {
                 "status":              "ERROR",
+                "quality_pass":        False,
                 "score":               0.0,
                 "recommendation":      f"Could not process image: {error}",
                 "hard_fail_triggered": False,
@@ -185,3 +212,8 @@ class QualitySupervisor:
             "details":         {},
             "processing_time_s": 0.0,
         }
+
+
+# Clinical alias matching eval_pipeline.ipynb
+ImageQualityAgent = QualitySupervisor
+

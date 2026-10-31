@@ -89,6 +89,7 @@ class DermaGuardState(TypedDict, total=False):
     localization: Optional[str]
 
     # ── Agent 1: Image Quality ──
+    quality_pass: bool
     quality_status: str                     # "PASS" | "FAIL" | "ERROR"
     quality_score: float
     quality_recommendation: str
@@ -96,9 +97,11 @@ class DermaGuardState(TypedDict, total=False):
     quality_report: Dict[str, Any]
 
     # ── Agent 4: Patient Context ──
+    risk_level: str                         # "LOW" | "MODERATE" | "HIGH"
     patient_risk_score: float
     patient_risk_indicator: str            # "LOW" | "MODERATE" | "HIGH"
     patient_missing_fields: List[str]
+    patient_risk_factors: List[str]
     patient_context_evidence: Dict[str, Any]
 
     # ── Agent 2: Diagnosis ──
@@ -108,6 +111,7 @@ class DermaGuardState(TypedDict, total=False):
     class_probabilities: Dict[str, float]
     melanoma_flag: bool
     melanoma_prob: float
+    malignant_prob: float
     diagnosis_models: List[str]
 
     # ── Agent 3: Lesion Analysis (ABCD) ──
@@ -117,12 +121,15 @@ class DermaGuardState(TypedDict, total=False):
     lesion_area_fraction: float
     equivalent_diameter_px: float
     max_dimension_px: float
+    abcd_score: float
+    lesion_risk: str                       # "LOW" | "MODERATE" | "HIGH"
     morphology_suspicion_score: float
     morphology_suspicion_level: str        # "LOW" | "MODERATE" | "HIGH"
     morphology_flags: List[str]
     segmentation_backend: str
 
     # ── Agent 5: Safety Review ──
+    must_refer: bool
     safety_veto: bool
     safety_flag: bool
     safety_severity: str                   # "CLEAR" | "WARN" | "VETO"
@@ -130,8 +137,10 @@ class DermaGuardState(TypedDict, total=False):
     safety_justification: str
 
     # ── Agent 6: Coordinator Decision ──
+    decision: str                          # "AUTO_TRIAGE" | "REFER" | "RE_IMAGE"
     final_decision: str                    # "AUTO_TRIAGE" | "REFER" | "RE_IMAGE"
     decision_rule: str
+    urgency: str                           # "REPEAT_IMAGE" | "URGENT" | "SOON" | "ROUTINE"
     confidence_tier: str                   # "HIGH" | "MODERATE" | "LOW"
     rationale: str
     evidence_summary: Dict[str, Any]
@@ -139,3 +148,4 @@ class DermaGuardState(TypedDict, total=False):
     # ── Explanation Layer: Gemini API ──
     clinical_explanation: str
     llm_error: Optional[str]
+

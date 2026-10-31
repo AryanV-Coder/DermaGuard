@@ -89,6 +89,14 @@ class LesionAnalysisAgent:
         if lesion_area < 50:
             reliability_flags.append("Lesion area too small for reliable ABCD analysis")
             return {
+                "asymmetry": 0.0,
+                "border_score": 0.0,
+                "colour_var": 0.0,
+                "diameter_px": 0.0,
+                "abcd_score": 0.0,
+                "lesion_risk": "UNKNOWN",
+                "lesion_area": round(area_ratio, 4),
+                "seg_backend": seg_backend,
                 "feature_evidence": {
                     "asymmetry_index": 0.0,
                     "border_irregularity": 0.0,
@@ -123,20 +131,29 @@ class LesionAnalysisAgent:
             _, _, bw, bh = cv2.boundingRect(max(contours, key=cv2.contourArea))
             max_dim = float(max(bw, bh))
 
-        # 6. Composite suspicion score
+        # 6. ABCD composite Stolz risk score (calibrated matching eval_pipeline.ipynb)
+        # stolz: 1.3*A + 0.1*B + 0.5*C + 0.5*D
+        abcd_score = (
+            1.3 * asymmetry_score +
+            0.1 * border_score +
+            0.5 * color_score +
+            0.5 * (eq_diameter / 100.0)
+        )
+        lesion_risk = (
+            "HIGH"     if abcd_score > 1.5 else
+            "MODERATE" if abcd_score > 0.8 else
+            "LOW"
+        )
+
         raw_suspicion = (
             self.w_a * asymmetry_score +
             self.w_b * border_score +
             self.w_c * color_score
         )
         suspicion_score = float(np.clip(raw_suspicion, 0.0, 1.0))
-
-        if suspicion_score >= self.high_thresh:
-            suspicion_level = "HIGH"
-        elif suspicion_score >= self.mod_thresh:
-            suspicion_level = "MODERATE"
-        else:
-            suspicion_level = "LOW"
+        suspicion_level = "HIGH" if suspicion_score >= self.high_thresh or lesion_risk == "HIGH" else (
+            "MODERATE" if suspicion_score >= self.mod_thresh or lesion_risk == "MODERATE" else "LOW"
+        )
 
         feature_evidence = {
             "asymmetry_index": round(float(asymmetry_score), 4),
@@ -149,12 +166,27 @@ class LesionAnalysisAgent:
         }
 
         return {
+            # Direct eval_pipeline.ipynb keys
+            "asymmetry":    round(float(asymmetry_score), 4),
+            "border_score": round(float(border_score), 4),
+            "colour_var":   round(float(color_score), 4),
+            "diameter_px":  round(float(eq_diameter), 2),
+            "abcd_score":   round(float(abcd_score), 4),
+            "lesion_risk":  lesion_risk,
+            "lesion_area":  round(float(area_ratio), 4),
+            "seg_backend":  seg_backend,
+
+            # Extended LangGraph / API structured keys
             "feature_evidence": feature_evidence,
             "suspicion_score": round(suspicion_score, 4),
             "suspicion_level": suspicion_level,
             "reliability_flags": reliability_flags,
             "segmentation_success": True,
         }
+
+    def __call__(self, source: Union[str, Path, np.ndarray]) -> Dict[str, Any]:
+        """Allows LesionAnalysisAgent to be invoked as a callable (agent3(img_path))."""
+        return self.analyze(source)
 
     # ───────────────── Helper Methods ─────────────────
 
@@ -335,15 +367,26 @@ class LesionAnalysisAgent:
     @staticmethod
     def _fallback_result(flags: List[str]) -> Dict[str, Any]:
         return {
+            "asymmetry": 0.0,
+            "border_score": 0.0,
+            "colour_var": 0.0,
+            "diameter_px": 0.0,
+            "abcd_score": 0.0,
+            "lesion_risk": "UNKNOWN",
+            "lesion_area": 0.0,
+            "seg_backend": "error",
             "feature_evidence": {
                 "asymmetry_index": 0.0,
                 "border_irregularity": 0.0,
                 "color_variation": 0.0,
                 "lesion_area_fraction": 0.0,
+                "equivalent_diameter_px": 0.0,
+                "segmentation_backend": "error",
             },
             "suspicion_score": 0.0,
             "suspicion_level": "UNKNOWN",
             "reliability_flags": flags,
             "segmentation_success": False,
         }
+
 

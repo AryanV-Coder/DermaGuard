@@ -147,10 +147,14 @@ class ReasoningContextAgent:
         # ── Risk category ─────────────────────────────────────────────────────
         if risk_score >= 0.60:
             risk_indicator = "HIGH"
-        elif risk_score >= 0.35:
+        elif risk_score >= 0.38:
             risk_indicator = "MODERATE"
         else:
             risk_indicator = "LOW"
+
+        risk_factors = [age_note, site_note]
+        if sex_note:
+            risk_factors.append(sex_note)
 
         context_evidence = {
             "age": {
@@ -170,12 +174,51 @@ class ReasoningContextAgent:
             },
         }
 
+        meta_available = (age is not None) or (sex is not None) or (localization is not None)
+
         return {
-            "context_evidence":    context_evidence,
-            "risk_score":          round(risk_score, 4),
+            # eval_pipeline.ipynb keys
+            "risk_level":          risk_indicator,
             "risk_indicator":      risk_indicator,
+            "risk_score":          round(risk_score, 4),
+            "metadata_available":  meta_available,
+            "risk_factors":        risk_factors,
+            "clinical_notes":      risk_factors,
+            "age":                 age,
+            "sex":                 norm_sex,
+            "localization":        localization or "unknown",
+
+            # LangGraph / structured keys
+            "context_evidence":    context_evidence,
             "missing_field_flags": missing_flags,
         }
+
+    def __call__(
+        self,
+        img_id_or_age: Optional[Union[str, float, int]] = None,
+        meta_row_or_sex: Optional[Union[Dict[str, Any], str]] = None,
+        localization: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """
+        Flexible callable interface:
+          - agent(age=45, sex='male', localization='back')
+          - agent('IMAGE_001', {'age': 45, 'sex': 'male', 'localization': 'back'})
+        """
+        if isinstance(meta_row_or_sex, dict):
+            # Called with (img_id, meta_row) format like eval_pipeline.ipynb
+            row = meta_row_or_sex
+            age = row.get("age", row.get("age_approx", row.get("patient_age", None)))
+            sex = row.get("sex", row.get("gender", None))
+            loc = row.get("localization", row.get("anatom_site_general_challenge", row.get("anatom_site_general", None)))
+            return self.evaluate(age=age, sex=sex, localization=loc)
+        elif isinstance(img_id_or_age, (int, float)):
+            return self.evaluate(age=img_id_or_age, sex=str(meta_row_or_sex) if meta_row_or_sex else None, localization=localization)
+        else:
+            age = kwargs.get("age", None)
+            sex = kwargs.get("sex", meta_row_or_sex if isinstance(meta_row_or_sex, str) else None)
+            loc = kwargs.get("localization", localization)
+            return self.evaluate(age=age, sex=sex, localization=loc)
 
     # ── Private helpers ───────────────────────────────────────────────────────
 
@@ -201,4 +244,9 @@ class ReasoningContextAgent:
 
         # Fallback
         return _SITE_RISK["unknown"][0], f"Unrecognised site '{localization}'; conservative estimate used"
+
+
+# Alias matching eval_pipeline.ipynb
+PatientRiskAgent = ReasoningContextAgent
+
 

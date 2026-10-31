@@ -1,4 +1,8 @@
-from .safety_agent import SafetyAgent
+"""
+DermaGuard Safety Agent (Agent 5)
+Clinical safety guardrails and multi-agent conflict arbitration.
+"""
 
-__all__ = ["SafetyAgent"]
+from .safety_agent import SafetyAgent, SafetyReviewAgent, MALIGNANT_CLASSES, BENIGN_CLASSES
 
+__all__ = ["SafetyAgent", "SafetyReviewAgent", "MALIGNANT_CLASSES", "BENIGN_CLASSES"]

@@ -85,9 +85,11 @@ class DermaGuardGraph:
         img_path = state.get("image_path")
         report = self.a1_quality.evaluate(img_path)
         overall = report.get("overall", {})
+        q_pass = bool(report.get("quality_pass", overall.get("status") == "PASS"))
 
         return {
-            "quality_status": overall.get("status", "ERROR"),
+            "quality_pass": q_pass,
+            "quality_status": overall.get("status", "PASS" if q_pass else "FAIL"),
             "quality_score": round(float(overall.get("score", 0.0)), 4),
             "quality_recommendation": overall.get("recommendation", ""),
             "quality_failed_checks": [
@@ -104,9 +106,11 @@ class DermaGuardGraph:
             localization=state.get("localization"),
         )
         return {
+            "risk_level": c_report.get("risk_level", "MODERATE"),
             "patient_risk_score": round(float(c_report.get("risk_score", 0.0)), 4),
-            "patient_risk_indicator": c_report.get("risk_indicator", "LOW"),
+            "patient_risk_indicator": c_report.get("risk_indicator", "MODERATE"),
             "patient_missing_fields": c_report.get("missing_field_flags", []),
+            "patient_risk_factors": c_report.get("risk_factors", []),
             "patient_context_evidence": c_report,
         }
 
@@ -115,22 +119,25 @@ class DermaGuardGraph:
         img_path = state.get("image_path")
         if self.a2_diagnosis is not None:
             res = self.a2_diagnosis.predict(img_path)
-            pred_class = res.get("predicted_class") or "nv"
-            pred_label = res.get("predicted_label") or "Melanocytic Nevi"
-            conf = res.get("confidence", 0.0)
+            pred_class = (res.get("predicted_class") or "nv").lower()
+            pred_label = res.get("predicted_label") or pred_class
+            conf = float(res.get("confidence", 0.0))
             probs = res.get("probabilities", {})
-            mel_prob = float(probs.get("mel", 0.0))
-            models = ["EfficientNet-B0"]
+            mel_prob = float(res.get("melanoma_prob", probs.get("mel", 0.0)))
+            malignant_prob = float(res.get("malignant_prob", sum(probs.get(c, 0.0) for c in ("mel", "bcc", "akiec"))))
+            mel_flag = bool(res.get("melanoma_flag", (pred_class == "mel") or (mel_prob >= 0.18)))
+            models = res.get("models_used", ["EfficientNet-B0"])
         else:
             # Fallback if diagnosis checkpoint is not present in local runtime
             pred_class = "nv"
-            pred_label = "Melanocytic Nevi (Baseline)"
+            pred_label = "nv"
             conf = 0.50
             probs = {"nv": 0.50, "mel": 0.10, "bkl": 0.10, "bcc": 0.10, "akiec": 0.10, "vasc": 0.05, "df": 0.05}
             mel_prob = 0.10
+            malignant_prob = 0.30
+            mel_flag = False
             models = ["Heuristic Baseline"]
 
-        mel_flag = (pred_class == "mel") or (mel_prob > 0.30)
         return {
             "predicted_class": pred_class,
             "predicted_label": pred_label,
@@ -138,6 +145,7 @@ class DermaGuardGraph:
             "class_probabilities": probs,
             "melanoma_flag": mel_flag,
             "melanoma_prob": round(mel_prob, 4),
+            "malignant_prob": round(malignant_prob, 4),
             "diagnosis_models": models,
         }
 
@@ -148,41 +156,54 @@ class DermaGuardGraph:
         fe = m_report.get("feature_evidence", {})
 
         return {
-            "asymmetry_index": fe.get("asymmetry_index", 0.0),
-            "border_irregularity": fe.get("border_irregularity", 0.0),
-            "color_variation": fe.get("color_variation", 0.0),
-            "lesion_area_fraction": fe.get("lesion_area_fraction", 0.0),
-            "equivalent_diameter_px": fe.get("equivalent_diameter_px", 0.0),
+            "asymmetry_index": m_report.get("asymmetry", fe.get("asymmetry_index", 0.0)),
+            "border_irregularity": m_report.get("border_score", fe.get("border_irregularity", 0.0)),
+            "color_variation": m_report.get("colour_var", fe.get("color_variation", 0.0)),
+            "lesion_area_fraction": m_report.get("lesion_area", fe.get("lesion_area_fraction", 0.0)),
+            "equivalent_diameter_px": m_report.get("diameter_px", fe.get("equivalent_diameter_px", 0.0)),
             "max_dimension_px": fe.get("max_dimension_px", 0.0),
+            "abcd_score": m_report.get("abcd_score", 0.0),
+            "lesion_risk": m_report.get("lesion_risk", "LOW"),
             "morphology_suspicion_score": m_report.get("suspicion_score", 0.0),
             "morphology_suspicion_level": m_report.get("suspicion_level", "LOW"),
             "morphology_flags": m_report.get("reliability_flags", []),
-            "segmentation_backend": fe.get("segmentation_backend", "otsu_fallback"),
+            "segmentation_backend": m_report.get("seg_backend", fe.get("segmentation_backend", "otsu_fallback")),
         }
 
     def node_safety(self, state: DermaGuardState) -> Dict[str, Any]:
-        """Node 5: Multi-agent conflict checking, vetoes, and clinical safety flags."""
-        a1_report = state.get("quality_report", {"overall": {"status": state.get("quality_status", "PASS"), "score": state.get("quality_score", 1.0)}})
+        """Node 5: Multi-agent conflict checking, vetoes, and zero-tolerance safety guardrails."""
+        a1_report = state.get("quality_report", {
+            "quality_pass": state.get("quality_pass", True),
+            "overall": {"status": state.get("quality_status", "PASS"), "score": state.get("quality_score", 1.0)}
+        })
         a2_result = {
             "predicted_class": state.get("predicted_class", "nv"),
+            "predicted_label": state.get("predicted_label", "nv"),
             "confidence": state.get("diagnosis_confidence", 0.50),
             "probabilities": state.get("class_probabilities", {}),
+            "melanoma_flag": state.get("melanoma_flag", False),
+            "melanoma_prob": state.get("melanoma_prob", 0.0),
+            "malignant_prob": state.get("malignant_prob", 0.0),
         }
         a3_result = {
             "suspicion_score": state.get("morphology_suspicion_score", 0.0),
             "suspicion_level": state.get("morphology_suspicion_level", "LOW"),
+            "abcd_score": state.get("abcd_score", 0.0),
+            "lesion_risk": state.get("lesion_risk", "LOW"),
             "reliability_flags": state.get("morphology_flags", []),
             "segmentation_success": True,
         }
         a4_result = state.get("patient_context_evidence", {
             "risk_score": state.get("patient_risk_score", 0.0),
-            "risk_indicator": state.get("patient_risk_indicator", "LOW"),
+            "risk_indicator": state.get("patient_risk_indicator", "MODERATE"),
+            "risk_level": state.get("risk_level", "MODERATE"),
             "missing_field_flags": state.get("patient_missing_fields", []),
         })
 
         s_report = self.a5_safety.review(a1_report, a2_result, a3_result, a4_result)
 
         return {
+            "must_refer": s_report.get("must_refer", s_report.get("veto", False)),
             "safety_veto": s_report.get("veto", False),
             "safety_flag": s_report.get("safety_flag", False),
             "safety_severity": s_report.get("severity", "CLEAR"),
@@ -195,27 +216,38 @@ class DermaGuardGraph:
         image_id = state.get("image_id", "IMAGE_001")
         q_status = state.get("quality_status", "PASS")
 
-        # Reconstruct standard agent reports
-        a1_report = state.get("quality_report", {"overall": {"status": q_status, "score": state.get("quality_score", 1.0)}})
+        a1_report = state.get("quality_report", {
+            "quality_pass": state.get("quality_pass", True),
+            "overall": {"status": q_status, "score": state.get("quality_score", 1.0)}
+        })
         a2_result = {
             "predicted_class": state.get("predicted_class", "nv"),
+            "predicted_label": state.get("predicted_label", "nv"),
             "confidence": state.get("diagnosis_confidence", 0.0),
             "probabilities": state.get("class_probabilities", {}),
+            "melanoma_flag": state.get("melanoma_flag", False),
+            "melanoma_prob": state.get("melanoma_prob", 0.0),
+            "malignant_prob": state.get("malignant_prob", 0.0),
         }
         a3_result = {
             "suspicion_score": state.get("morphology_suspicion_score", 0.0),
             "suspicion_level": state.get("morphology_suspicion_level", "LOW"),
+            "abcd_score": state.get("abcd_score", 0.0),
+            "lesion_risk": state.get("lesion_risk", "LOW"),
             "reliability_flags": state.get("morphology_flags", []),
         }
         a4_result = {
             "risk_score": state.get("patient_risk_score", 0.0),
-            "risk_indicator": state.get("patient_risk_indicator", "LOW"),
+            "risk_indicator": state.get("patient_risk_indicator", "MODERATE"),
+            "risk_level": state.get("risk_level", "MODERATE"),
             "missing_field_flags": state.get("patient_missing_fields", []),
         }
         a5_result = {
+            "must_refer": state.get("must_refer", state.get("safety_veto", False)),
             "veto": state.get("safety_veto", False),
             "severity": state.get("safety_severity", "CLEAR"),
             "triggers": state.get("safety_triggers", []),
+            "safety_flags": state.get("safety_triggers", []),
             "justification": state.get("safety_justification", ""),
         }
 
@@ -223,7 +255,10 @@ class DermaGuardGraph:
 
         return {
             "final_decision": c_out["decision"],
+            "decision": c_out["decision"],
+            "predicted_label": c_out.get("predicted_label", state.get("predicted_label", "nv")),
             "decision_rule": c_out["decision_rule"],
+            "urgency": c_out.get("urgency", "ROUTINE"),
             "confidence_tier": c_out["confidence_tier"],
             "rationale": c_out["rationale"],
             "evidence_summary": c_out["evidence_summary"],
@@ -340,3 +375,107 @@ class DermaGuardGraph:
             "localization": localization,
         }
         return self.app.invoke(initial_state)
+
+    def get_api_response(self, state: DermaGuardState) -> Dict[str, Any]:
+        """
+        Formats the LangGraph pipeline execution state into a clean,
+        structured dictionary with individual agent outputs ready for API JSON response.
+        """
+        img_id = state.get("image_id", "CASE_001")
+        pred_label = state.get("predicted_label") or state.get("predicted_class", "nv")
+        decision = state.get("final_decision") or state.get("decision", "REFER")
+        urgency = state.get("urgency", "ROUTINE" if decision == "AUTO_TRIAGE" else "SOON")
+
+        return {
+            # ── Track 2 Official Submission Format ────────────────────────────
+            "image_id":         img_id,
+            "predicted_label":  pred_label,
+            "decision":         decision,
+            "urgency":          urgency,
+            "rationale":        state.get("rationale", ""),
+
+            # ── Agent 1: Image Quality ────────────────────────────────────────
+            "agent1_quality": {
+                "quality_pass":   state.get("quality_pass", state.get("quality_status") == "PASS"),
+                "status":         state.get("quality_status", "PASS"),
+                "score":          state.get("quality_score", 1.0),
+                "failed_checks":  state.get("quality_failed_checks", []),
+                "recommendation": state.get("quality_recommendation", ""),
+                "metrics": {
+                    "blur":        (state.get("quality_report") or {}).get("blur", 0.0),
+                    "brightness":  (state.get("quality_report") or {}).get("brightness", 0.0),
+                    "glare_ratio": (state.get("quality_report") or {}).get("glare_ratio", 0.0),
+                    "occlude_ratio": (state.get("quality_report") or {}).get("occlude_ratio", 0.0),
+                },
+            },
+
+            # ── Agent 2: Diagnosis ────────────────────────────────────────────
+            "agent2_diagnosis": {
+                "predicted_class":     state.get("predicted_class", "nv"),
+                "predicted_label":     pred_label,
+                "confidence":          state.get("diagnosis_confidence", 0.0),
+                "class_probabilities": state.get("class_probabilities", {}),
+                "melanoma_flag":       state.get("melanoma_flag", False),
+                "melanoma_prob":       state.get("melanoma_prob", 0.0),
+                "malignant_prob":      state.get("malignant_prob", 0.0),
+                "models_used":         state.get("diagnosis_models", []),
+            },
+
+            # ── Agent 3: Lesion Analysis (ABCD) ───────────────────────────────
+            "agent3_lesion": {
+                "asymmetry":            state.get("asymmetry_index", 0.0),
+                "border_score":         state.get("border_irregularity", 0.0),
+                "colour_var":           state.get("color_variation", 0.0),
+                "diameter_px":          state.get("equivalent_diameter_px", 0.0),
+                "abcd_score":           state.get("abcd_score", 0.0),
+                "lesion_risk":          state.get("lesion_risk", state.get("morphology_suspicion_level", "LOW")),
+                "suspicion_score":      state.get("morphology_suspicion_score", 0.0),
+                "segmentation_backend": state.get("segmentation_backend", "otsu_fallback"),
+                "flags":                state.get("morphology_flags", []),
+            },
+
+            # ── Agent 4: Patient Context ──────────────────────────────────────
+            "agent4_patient_risk": {
+                "risk_level":     state.get("risk_level", state.get("patient_risk_indicator", "MODERATE")),
+                "risk_score":     state.get("patient_risk_score", 0.40),
+                "age":            state.get("age"),
+                "sex":            state.get("sex"),
+                "localization":   state.get("localization"),
+                "risk_factors":   state.get("patient_risk_factors", []),
+                "missing_fields": state.get("patient_missing_fields", []),
+            },
+
+            # ── Agent 5: Safety Review ────────────────────────────────────────
+            "agent5_safety": {
+                "must_refer":    state.get("must_refer", state.get("safety_veto", False)),
+                "veto":          state.get("safety_veto", False),
+                "severity":      state.get("safety_severity", "CLEAR"),
+                "safety_flags":  state.get("safety_triggers", []),
+                "justification": state.get("safety_justification", ""),
+            },
+
+            # ── Agent 6: Coordinator Decision ─────────────────────────────────
+            "agent6_coordinator": {
+                "decision":        decision,
+                "decision_rule":   state.get("decision_rule", ""),
+                "urgency":         urgency,
+                "confidence_tier": state.get("confidence_tier", "LOW"),
+                "rationale":       state.get("rationale", ""),
+            },
+
+            # ── LLM Clinical Explanation ──────────────────────────────────────
+            "clinical_explanation": state.get("clinical_explanation", ""),
+        }
+
+    def run_api(
+        self,
+        image_path: Union[str, Path],
+        image_id: str = "CASE_001",
+        age: Optional[float] = None,
+        sex: Optional[str] = None,
+        localization: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Convenience method that runs pipeline and returns structured API dictionary."""
+        state = self.run(image_path=image_path, image_id=image_id, age=age, sex=sex, localization=localization)
+        return self.get_api_response(state)
+
