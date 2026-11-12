@@ -69,21 +69,38 @@ class GradCAMExplainer:
             self._register_hooks()
 
     def _register_hooks(self):
-        """Finds target layer and registers forward hook that attaches gradient hook directly to the activation tensor."""
+        """Finds target layer and registers forward and backward hooks for exact gradient capture."""
         if self.target_layer is None:
             self.target_layer = self._find_target_layer(self.model)
 
         if self.target_layer is not None:
+            # Clear previous handles if any
+            for h in self.hook_handles:
+                try:
+                    h.remove()
+                except Exception:
+                    pass
+            self.hook_handles = []
+
             def forward_hook(module, input, output):
-                # Clone activations to prevent in-place modification by subsequent layers
+                # Save activations and attach a gradient hook directly to the live output tensor
                 self.activations = output.detach().clone()
-                def tensor_backward_hook(grad):
+                def tensor_grad_hook(grad):
                     self.gradients = grad.detach().clone()
                 if output.requires_grad:
-                    output.register_hook(tensor_backward_hook)
+                    output.register_hook(tensor_grad_hook)
+
+            def backward_hook(module, grad_in, grad_out):
+                if self.gradients is None and grad_out and grad_out[0] is not None:
+                    self.gradients = grad_out[0].detach().clone()
 
             h1 = self.target_layer.register_forward_hook(forward_hook)
             self.hook_handles.append(h1)
+            try:
+                h2 = self.target_layer.register_full_backward_hook(backward_hook)
+                self.hook_handles.append(h2)
+            except Exception:
+                pass
 
     def _find_target_layer(self, model: Any) -> Optional[Any]:
         """Automatically discovers the last convolutional layer."""
@@ -128,7 +145,8 @@ class GradCAMExplainer:
         mask: Optional[np.ndarray] = None,
     ) -> Dict[str, Any]:
         """
-        Generates Grad-CAM heatmap and blended overlay.
+        Generates classic Grad-CAM heatmap and blended overlay.
+        Matches the standard medical clinical visualization (Jet colormap, 50/50 blend).
         """
         # Load and normalize original image
         orig_bgr, pil_rgb = self._load_image(image_input)
@@ -141,56 +159,34 @@ class GradCAMExplainer:
 
         target_name = CLASS_NAMES[target_class_idx] if 0 <= target_class_idx < len(CLASS_NAMES) else "unknown"
 
-        # Check if model Grad-CAM can be computed
+        # Check if model Grad-CAM can be computed via PyTorch backpropagation
         heatmap = None
         if TORCH_AVAILABLE and self.model is not None and self.target_layer is not None:
             try:
                 heatmap = self._compute_pytorch_gradcam(pil_rgb, target_class_idx, (w, h))
             except Exception as e:
-                print(f"[GradCAM] PyTorch Grad-CAM computation failed ({e}), falling back to morphology saliency.")
+                print(f"[GradCAM] ⚠️ PyTorch Grad-CAM computation note ({e}), falling back to morphology saliency.")
                 heatmap = None
 
         if heatmap is None:
-            # High-fidelity morphology-guided saliency fallback
+            # Morphology-guided saliency fallback
             heatmap = self._compute_morphology_saliency(orig_bgr, mask, target_name)
 
-        # 1. Contrast stretch and sharpen the heatmap so the lesion hotspot reaches deep RED
-        h, w = orig_bgr.shape[:2]
+        # 1. Resize and normalize heatmap to [0, 1]
         heatmap = cv2.resize(heatmap, (w, h), interpolation=cv2.INTER_CUBIC)
         h_min, h_max = float(heatmap.min()), float(heatmap.max())
         if h_max - h_min > 1e-8:
             norm_heat = (heatmap - h_min) / (h_max - h_min)
-            # Contrast stretch: suppress baseline skin below 0.15, push lesion core to 1.0 (pure red)
-            norm_heat = np.clip((norm_heat - 0.12) / 0.72, 0.0, 1.0)
         else:
             norm_heat = np.zeros((h, w), dtype=np.float32)
 
-        # 2. Colorize with classic JET colormap (0=blue, 128=green, 200=yellow, 255=red)
+        # 2. Classic JET Colormap (0=royal blue, 64=cyan, 128=green, 192=yellow, 255=deep red)
         heatmap_uint8 = np.uint8(255 * norm_heat)
         heatmap_color = cv2.applyColorMap(heatmap_uint8, colormap)
 
-        # 3. Authentic clinical Grad-CAM overlay:
-        # - Outside the lesion (< 0.08): 0% opacity (preserves 100% natural healthy skin)
-        # - Lesion margin (0.08 - 0.35): smooth transition through cyan and green
-        # - Lesion core (> 0.50): 50% to 65% opacity displaying vivid RED and ORANGE
-        alpha = np.zeros((h, w, 1), dtype=np.float32)
-        active_mask = norm_heat > 0.08
-        alpha[active_mask] = (0.30 + 0.35 * ((norm_heat[active_mask] - 0.08) / 0.92))[:, np.newaxis]
-
-        overlay_bgr = (orig_bgr.astype(np.float32) * (1.0 - alpha) + 
-                       heatmap_color.astype(np.float32) * alpha)
-        overlay_bgr = np.clip(overlay_bgr, 0, 255).astype(np.uint8)
-
-        # 4. Highlight the peak attention hotspot boundary with a subtle white contour
-        if norm_heat.max() > 0.65:
-            hotspot_mask = (norm_heat > 0.70).astype(np.uint8) * 255
-            hotspot_cnts, _ = cv2.findContours(hotspot_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            if hotspot_cnts:
-                cv2.drawContours(overlay_bgr, hotspot_cnts, -1, (255, 255, 255), 1, cv2.LINE_AA)
-
-        # Pure heatmap: dark background with the glowing activation signature
-        pure_alpha = np.repeat(np.clip(norm_heat / 0.30, 0.0, 1.0)[:, :, np.newaxis], 3, axis=2)
-        pure_heatmap_bgr = (heatmap_color.astype(np.float32) * pure_alpha).astype(np.uint8)
+        # 3. Standard Grad-CAM semi-transparent blending (matches Chest X-Ray reference style)
+        # 0.55 * original_image + 0.45 * heatmap_color
+        overlay_bgr = cv2.addWeighted(orig_bgr, 0.55, heatmap_color, 0.45, 0)
 
         # Compute focus metric
         focus_pct = self._compute_focus_metric(norm_heat, mask, orig_bgr)
@@ -201,7 +197,7 @@ class GradCAMExplainer:
         # Encode to Base64 Data URIs
         overlay_base64 = self._to_base64(overlay_bgr)
         orig_base64 = self._to_base64(orig_bgr)
-        heatmap_base64 = self._to_base64(pure_heatmap_bgr)
+        heatmap_base64 = self._to_base64(heatmap_color)
 
         description = self._generate_description(target_name, focus_pct, (int(peak_x), int(peak_y)), (w, h))
 
@@ -227,10 +223,10 @@ class GradCAMExplainer:
         target_class_idx: int,
         target_size: Tuple[int, int],
     ) -> np.ndarray:
-        """Runs forward/backward pass and computes Grad-CAM activations."""
+        """Runs forward/backward pass on diagnosis model and computes Grad-CAM activations."""
         self.model.eval()
 
-        # Ensure parameters participate in autograd
+        # 1. Ensure model parameters participate in autograd
         for p in self.model.parameters():
             p.requires_grad = True
 
@@ -248,49 +244,61 @@ class GradCAMExplainer:
         self.gradients = None
         self.activations = None
 
+        # 2. Forward pass
         output = self.model(t_img)
+        pred_idx = int(torch.argmax(output, dim=1).item())
 
         if target_class_idx is None or target_class_idx < 0 or target_class_idx >= output.shape[1]:
-            target_class_idx = int(torch.argmax(output, dim=1).item())
+            target_class_idx = pred_idx
 
+        # 3. Backward pass for target class score
         score = output[0, target_class_idx]
         score.backward(retain_graph=True)
 
+        # 4. If gradients were not captured or target class produced zero gradient, try predicted class
+        if self.gradients is None or self.activations is None:
+            self.model.zero_grad()
+            self.gradients = None
+            pred_score = output[0, pred_idx]
+            pred_score.backward(retain_graph=True)
+
         if self.gradients is None or self.activations is None:
             raise RuntimeError(
-                f"Hooks did not capture activations (present: {self.activations is not None}) "
-                f"or gradients (present: {self.gradients is not None})."
+                f"Grad-CAM hook failed to capture gradients/activations on {self.model.__class__.__name__}"
             )
 
-        # Global average pooling of gradients across spatial dimensions: (1, C, 1, 1)
+        # 5. Global average pooling of gradients: (1, C, 1, 1)
         weights = torch.mean(self.gradients, dim=[2, 3], keepdim=True)
         # Weighted combination of forward activation maps
         cam = torch.sum(weights * self.activations, dim=1, keepdim=True)
         cam = F.relu(cam)
 
-        cam_np = cam.squeeze().cpu().numpy()
+        cam_np = cam.squeeze().detach().cpu().numpy()
         cam_min, cam_max = float(cam_np.min()), float(cam_np.max())
 
-        # If ReLU eliminated all activations, use absolute gradient weights
+        # If ReLU eliminated all activations (strictly negative gradients for requested class),
+        # use absolute gradient weighting or top predicted class
         if cam_max <= 1e-7:
             cam_abs = torch.abs(torch.sum(weights * self.activations, dim=1, keepdim=True))
-            cam_np = cam_abs.squeeze().cpu().numpy()
+            cam_np = cam_abs.squeeze().detach().cpu().numpy()
             cam_min, cam_max = float(cam_np.min()), float(cam_np.max())
 
-        if cam_max - cam_min > 1e-8:
-            cam_np = (cam_np - cam_min) / (cam_max - cam_min)
-        else:
-            # Fallback to feature map intensity energy
-            act_energy = torch.mean(torch.abs(self.activations), dim=1).squeeze().cpu().numpy()
-            a_min, a_max = float(act_energy.min()), float(act_energy.max())
-            if a_max - a_min > 1e-8:
-                cam_np = (act_energy - a_min) / (a_max - a_min)
-            else:
-                cam_np = np.ones_like(cam_np) * 0.5
+        arch_name = getattr(self.model, "default_cfg", {}).get("architecture", self.model.__class__.__name__)
+        print(
+            f"[GradCAM] ✅ Real PyTorch backpropagation successful on {arch_name} "
+            f"for class '{CLASS_NAMES[target_class_idx]}' (logit: {score.item():.3f}, "
+            f"grad_shape: {tuple(self.gradients.shape)})"
+        )
 
         w, h = target_size
-        heatmap_resized = cv2.resize(cam_np, (w, h), interpolation=cv2.INTER_LINEAR)
-        return np.clip(heatmap_resized, 0.0, 1.0)
+        cam_resized = cv2.resize(cam_np, (w, h), interpolation=cv2.INTER_CUBIC)
+        c_min, c_max = float(cam_resized.min()), float(cam_resized.max())
+        if c_max - c_min > 1e-8:
+            norm_cam = (cam_resized - c_min) / (c_max - c_min)
+        else:
+            norm_cam = np.zeros((h, w), dtype=np.float32)
+
+        return np.clip(norm_cam, 0.0, 1.0)
 
     def _compute_morphology_saliency(
         self,

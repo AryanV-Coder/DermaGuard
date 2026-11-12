@@ -107,17 +107,9 @@ class GradCAM:
         else:
             cam_norm = np.zeros_like(cam_np)
 
-        # Create colored overlay with attention-weighted blending
+        # Create colored overlay matching standard clinical Grad-CAM (55% original + 45% JET heatmap)
         heatmap_color = cv2.applyColorMap(np.uint8(255 * cam_norm), cv2.COLORMAP_JET)
-        # Suppress cold background (blue in JET) to preserve natural skin
-        threshold = 0.12
-        heat_mask = np.clip((cam_norm - threshold) / (1.0 - threshold), 0.0, 1.0)
-        alpha_map = np.power(heat_mask, 1.25) * 0.65
-        alpha_3c = np.repeat(alpha_map[:, :, np.newaxis], 3, axis=2)
-
-        overlay = (orig_bgr.astype(np.float32) * (1.0 - alpha_3c) + 
-                   heatmap_color.astype(np.float32) * alpha_3c)
-        overlay = np.clip(overlay, 0, 255).astype(np.uint8)
+        overlay = cv2.addWeighted(orig_bgr, 0.55, heatmap_color, 0.45, 0)
 
         return cam_norm, overlay, target_class_idx
 
