@@ -16,7 +16,6 @@ export default function UploadPanel({ onAnalysis, onError, onReset, loading, set
   const [age, setAge] = useState('')
   const [sex, setSex] = useState('')
   const [localization, setLocalization] = useState('')
-  const [colormap, setColormap] = useState('jet')
   const fileRef = useRef()
 
   const handleFile = useCallback((f) => {
@@ -53,7 +52,7 @@ export default function UploadPanel({ onAnalysis, onError, onReset, loading, set
     if (sex) form.append('sex', sex)
     if (localization) form.append('localization', localization)
     form.append('include_gradcam', 'true')
-    form.append('colormap', colormap)
+    form.append('colormap', 'jet')
 
     try {
       const res = await fetch(`${API_BASE}/api/analyze`, { method: 'POST', body: form })
@@ -82,7 +81,6 @@ export default function UploadPanel({ onAnalysis, onError, onReset, loading, set
   return (
     <form className={styles.panel} onSubmit={handleSubmit}>
       <div className={styles.panelHeader}>
-        <span className={styles.panelIcon}>📋</span>
         <h2 className={styles.panelTitle}>Input Lesion Image</h2>
       </div>
 
@@ -114,7 +112,13 @@ export default function UploadPanel({ onAnalysis, onError, onReset, loading, set
           </div>
         ) : (
           <div className={styles.dropContent}>
-            <div className={styles.dropIcon}>🔬</div>
+            <div className={styles.dropIcon}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+            </div>
             <p className={styles.dropTitle}>Drop dermoscopy image here</p>
             <p className={styles.dropSub}>or click to browse · JPEG · PNG · WebP</p>
           </div>
@@ -129,9 +133,7 @@ export default function UploadPanel({ onAnalysis, onError, onReset, loading, set
 
       {/* Patient Parameters */}
       <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>
-          <span>👤</span> Patient Parameters
-        </h3>
+        <h3 className={styles.sectionTitle}>Patient Parameters</h3>
 
         <div className={styles.row2}>
           <div className={styles.field}>
@@ -166,25 +168,6 @@ export default function UploadPanel({ onAnalysis, onError, onReset, loading, set
         </div>
       </div>
 
-      {/* Visualization Options */}
-      <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>
-          <span>🌡️</span> Grad-CAM Options
-        </h3>
-        <div className={styles.colormapRow}>
-          {[
-            { val: 'jet', label: 'Jet', desc: 'Clinical classic' },
-            { val: 'turbo', label: 'Turbo', desc: 'High contrast' },
-          ].map(o => (
-            <label key={o.val} className={`${styles.colormapOption} ${colormap === o.val ? styles.colormapSelected : ''}`}>
-              <input type="radio" name="colormap" value={o.val} checked={colormap === o.val} onChange={() => setColormap(o.val)} className={styles.hiddenInput} />
-              <span className={styles.colormapLabel}>{o.label}</span>
-              <span className={styles.colormapDesc}>{o.desc}</span>
-            </label>
-          ))}
-        </div>
-      </div>
-
       {/* Submit */}
       <button
         type="submit"
@@ -193,7 +176,7 @@ export default function UploadPanel({ onAnalysis, onError, onReset, loading, set
       >
         {loading
           ? <><span className={styles.btnSpinner} /> Predicting…</>
-          : <><span>⚡</span> Predict & Run Pipeline</>
+          : <>Predict & Run Pipeline</>
         }
       </button>
     </form>

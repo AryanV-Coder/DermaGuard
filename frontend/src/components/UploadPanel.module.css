@@ -108,28 +108,6 @@
 }
 .input option { background: #ffffff; color: #0f172a; }
 
-/* Colormap */
-.colormapRow { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
-.colormapOption {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.2rem;
-  padding: 0.65rem;
-  border: 1px solid #e2e8f0;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all 0.2s;
-  background: #f8fafc;
-}
-.colormapOption:hover { border-color: var(--teal); }
-.colormapSelected {
-  border-color: var(--teal);
-  background: rgba(13, 148, 136, 0.08);
-}
-.colormapLabel { font-size: 0.875rem; font-weight: 600; color: #0f172a; }
-.colormapDesc { font-size: 0.7rem; color: var(--text-dim); }
-
 /* Submit */
 .submitBtn {
   display: flex;
