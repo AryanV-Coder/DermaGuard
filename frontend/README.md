@@ -32,7 +32,6 @@ Open **http://localhost:3000** in your browser.
 - **Decision banner** — `AUTO_TRIAGE` / `REFER` / `RE_IMAGE` with urgency level
 - **Grad-CAM heatmap viewer** — 3-view switcher: overlay, original, pure heatmap
 - **Per-agent result cards** — all 6 agents with metrics, progress bars, and flags
-- **Gemini clinical explanation** — natural language summary
 - **Raw JSON viewer** — full pipeline response
 
 ## Build for Production

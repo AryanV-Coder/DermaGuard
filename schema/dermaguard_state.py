@@ -144,8 +144,5 @@ class DermaGuardState(TypedDict, total=False):
     confidence_tier: str                   # "HIGH" | "MODERATE" | "LOW"
     rationale: str
     evidence_summary: Dict[str, Any]
-
-    # ── Explanation Layer: Gemini API ──
-    clinical_explanation: str
-    llm_error: Optional[str]
+    visualizations: Dict[str, Any]
 

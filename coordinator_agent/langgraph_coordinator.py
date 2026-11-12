@@ -8,14 +8,13 @@ Implements the 6-agent collaborative StateGraph workflow:
   Node 4: Lesion Analysis Agent with U-Net + ABCD (Agent 3)
   Node 5: Safety Agent & Veto Engine (Agent 5)
   Node 6: Coordinator Agent (Agent 6)
-  Node 7: Gemini Clinical Explainer (LLM)
 
 Features:
   - Parallel fan-out for Quality & Context
   - Conditional short-circuit routing on Image Quality failure
   - Parallel fan-out for Diagnosis & Lesion Analysis on Quality PASS
   - Immutable typed state updates (DermaGuardState)
-  - Post-coordinator LLM explanation generation
+  - Grad-CAM heatmap explainability
 """
 
 import sys
@@ -37,7 +36,6 @@ from lesion_analysis_agent.lesion_analysis_agent import LesionAnalysisAgent
 from reasoning_context_agent.reasoning_context_agent import ReasoningContextAgent
 from safety_agent.safety_agent import SafetyAgent
 from coordinator_agent.coordinator_agent import CoordinatorAgent
-from explanation.gemini_explainer import GeminiExplainer
 from explanation.gradcam import GradCAMExplainer
 
 # Optional DiagnosisAgent import (handles missing torch gracefully)
@@ -57,15 +55,13 @@ class DermaGuardGraph:
         self,
         model_path: Optional[str] = None,
         unet_path: Optional[str] = None,
-        gemini_api_key: Optional[str] = None,
     ):
-        print("[DermaGuardGraph] Initializing 6 specialized agents and explainer...")
+        print("[DermaGuardGraph] Initializing 6 specialized agents...")
         self.a1_quality = QualitySupervisor()
         self.a4_context = ReasoningContextAgent()
         self.a3_lesion = LesionAnalysisAgent(model_path=unet_path)
         self.a5_safety = SafetyAgent()
         self.a6_coordinator = CoordinatorAgent()
-        self.explainer = GeminiExplainer(api_key=gemini_api_key)
 
         self.a2_diagnosis = None
         if DIAGNOSIS_AVAILABLE:
@@ -289,51 +285,6 @@ class DermaGuardGraph:
             "evidence_summary": c_out["evidence_summary"],
         }
 
-    def node_gemini_explainer(self, state: DermaGuardState) -> Dict[str, Any]:
-        """Node 7: Post-decision Gemini Clinical Explanation."""
-        findings_payload = {
-            "image_id": state.get("image_id"),
-            "final_decision": state.get("final_decision"),
-            "decision_rule": state.get("decision_rule"),
-            "confidence_tier": state.get("confidence_tier"),
-            "image_quality": {
-                "status": state.get("quality_status"),
-                "score": state.get("quality_score"),
-                "failed_checks": state.get("quality_failed_checks", []),
-            },
-            "diagnosis": {
-                "predicted_class": state.get("predicted_class"),
-                "predicted_label": state.get("predicted_label"),
-                "confidence": state.get("diagnosis_confidence"),
-                "melanoma_flag": state.get("melanoma_flag"),
-                "melanoma_prob": state.get("melanoma_prob"),
-            },
-            "lesion_analysis": {
-                "asymmetry_index": state.get("asymmetry_index"),
-                "border_irregularity": state.get("border_irregularity"),
-                "color_variation": state.get("color_variation"),
-                "suspicion_level": state.get("morphology_suspicion_level"),
-                "suspicion_score": state.get("morphology_suspicion_score"),
-                "segmentation_backend": state.get("segmentation_backend"),
-            },
-            "patient_context": {
-                "age": state.get("age"),
-                "sex": state.get("sex"),
-                "localization": state.get("localization"),
-                "risk_indicator": state.get("patient_risk_indicator"),
-            },
-            "safety": {
-                "severity": state.get("safety_severity"),
-                "veto": state.get("safety_veto"),
-                "triggers": state.get("safety_triggers", []),
-            },
-        }
-
-        explanation = self.explainer.explain(findings_payload)
-        return {
-            "clinical_explanation": explanation
-        }
-
     # ── Graph Construction ────────────────────────────────────────────────────
 
     def _build_graph(self) -> StateGraph:
@@ -346,7 +297,6 @@ class DermaGuardGraph:
         workflow.add_node("lesion_agent", self.node_lesion_analysis)
         workflow.add_node("safety_agent", self.node_safety)
         workflow.add_node("coordinator", self.node_coordinator)
-        workflow.add_node("gemini_explainer", self.node_gemini_explainer)
 
         # 2. Parallel fan-out from START to Quality & Context
         workflow.add_edge(START, "quality_agent")
@@ -375,9 +325,8 @@ class DermaGuardGraph:
         # Safety reviews both diagnosis + lesion analysis + context
         workflow.add_edge("safety_agent", "coordinator")
 
-        # Coordinator triggers Gemini Explainer
-        workflow.add_edge("coordinator", "gemini_explainer")
-        workflow.add_edge("gemini_explainer", END)
+        # Coordinator yields final triage disposition
+        workflow.add_edge("coordinator", END)
 
         return workflow
 
@@ -487,9 +436,6 @@ class DermaGuardGraph:
                 "confidence_tier": state.get("confidence_tier", "LOW"),
                 "rationale":       state.get("rationale", ""),
             },
-
-            # ── LLM Clinical Explanation ──────────────────────────────────────
-            "clinical_explanation": state.get("clinical_explanation", ""),
 
             # ── Grad-CAM Visual Explainability ────────────────────────────────
             "visualizations": state.get("visualizations", {}),

@@ -164,7 +164,7 @@ async def root():
             "Agent 5: Clinical Safety Veto Guardrails (Zero-Tolerance Missed Cancers)",
             "Agent 6: Coordinator & Final Track 2 Decision Engine",
         ],
-        "explainability": "Grad-CAM Feature Activation Heatmaps & Gemini Clinical Summaries",
+        "explainability": "Grad-CAM Feature Activation Heatmaps",
         "endpoints": {
             "analyze": "POST /api/analyze (Upload dermoscopy image for complete multi-agent triage + Grad-CAM)",
             "gradcam": "POST /api/gradcam (Standalone Grad-CAM visual heatmap)",

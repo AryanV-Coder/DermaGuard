@@ -12,7 +12,7 @@ export default function ResultsPanel({ result }) {
   if (!result) return null
 
   const {
-    decision, urgency, rationale, clinical_explanation,
+    decision, urgency, rationale,
     visualizations,
     agent1_quality,
     agent2_diagnosis,
@@ -44,17 +44,6 @@ export default function ResultsPanel({ result }) {
         <Agent5Card data={agent5_safety} />
         <Agent6Card data={agent6_coordinator} decision={decision} urgency={urgency} />
       </div>
-
-      {/* Clinical Explanation */}
-      {clinical_explanation && (
-        <div className={styles.explanationCard}>
-          <div className={styles.explanationHeader}>
-            <span>✨</span>
-            <h3>Gemini Clinical Explanation</h3>
-          </div>
-          <p className={styles.explanationText}>{clinical_explanation}</p>
-        </div>
-      )}
 
       {/* Raw JSON toggle */}
       <details className={styles.rawJson}>

@@ -6,10 +6,6 @@ Runs the full 6-agent LangGraph system on single images or batch datasets.
 Usage:
   # Single image evaluation
   python run_dermaguard.py --image path/to/image.jpg --age 48 --sex male --site back
-
-  # With Gemini API key for live explanations
-  export GEMINI_API_KEY="your-api-key"
-  python run_dermaguard.py --image path/to/image.jpg
 """
 
 import argparse
@@ -35,7 +31,6 @@ def main():
     parser.add_argument("--site", type=str, default=None, help="Anatomical site (e.g., face, back, chest, arm)")
     parser.add_argument("--model", type=str, default=None, help="Path to diagnosis CNN weights (.pth)")
     parser.add_argument("--unet", type=str, default=None, help="Path to U-Net segmentation weights (.pth / .onnx)")
-    parser.add_argument("--key", type=str, default=None, help="Google Gemini API key")
     parser.add_argument("--json", action="store_true", help="Output full result as JSON")
     args = parser.parse_args()
 
@@ -48,7 +43,6 @@ def main():
     graph = DermaGuardGraph(
         model_path=args.model,
         unet_path=args.unet,
-        gemini_api_key=args.key,
     )
 
     print(f"\nProcessing case: {args.id} ({image_path.name})...")

@@ -49,7 +49,7 @@ Dermatology faces a dual clinical bottleneck: overburdened specialist clinics le
    - 🟢 `AUTO_TRIAGE` — High-confidence, verified benign lesions safely cleared for routine primary care.
    - 🔴 `REFER` — Suspected malignancies, high-risk phenotypes, or safety vetoes routed to urgent specialist review.
    - 🟡 `RE_IMAGE` — Blurry, underexposed, specular-glare, or occluded captures flagged for immediate re-acquisition.
-7. **Explaining decisions** via **Grad-CAM visual attention overlays** and **multimodal Gemini clinical rationales**.
+7. **Explaining decisions** via **Grad-CAM visual attention overlays** and complete per-agent audit metrics.
 
 ---
 
@@ -80,7 +80,7 @@ flowchart TD
     A6 --> REFER([🔴 Decision: REFER\nUrgent / Soon Specialist Referral])
 
     %% Post-Coordinator Explanations
-    A6 --> EXP[Node 7: Explanability Engine\nGrad-CAM Heatmap + Gemini Clinical Explainer]
+    A6 --> EXP[Visual Explainability\nGrad-CAM Feature Activation Heatmap]
     EXP --> END([🏁 Complete Structured Patient Triage Audit Trail])
 
     classDef input fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
@@ -160,10 +160,10 @@ flowchart TD
   - **`AUTO_TRIAGE`**: Reserved strictly for high-confidence benign predictions (`nv`, `bkl`, `df`, `vasc`) with pristine image quality, low ABCD suspicion, and clear safety checks.
 * **Output**: Final decision, clinical urgency (`ROUTINE`, `SOON`, `URGENT`, `REPEAT_IMAGE`), confidence tier, and decision rule.
 
-### Explanability Engine: Grad-CAM & Gemini Explainer
+### Explanability Engine: Grad-CAM Visual Heatmaps
 *Location: [`explanation/`](explanation/)*
 * **Visual Attention**: PyTorch Grad-CAM extracts spatial gradients from the final convolutional layer, producing high-resolution heatmaps overlaid on the lesion. Quantifies the percentage of attention focused inside the segmented lesion boundary.
-* **Clinical Rationale**: Google Gemini multimodal LLM (with offline deterministic fallback) translates multi-agent technical telemetry into actionable, structured clinical summaries.
+* **Deterministic Metrics**: Peak attention coordinates, focus percentage inside lesion boundary, and clinical category descriptions are computed directly without third-party external dependencies.
 
 ---
 
@@ -236,9 +236,9 @@ python -m pip install \
   torch torchvision pytest
 ```
 
-### 3. Model Weights & API Keys (Optional)
+### 3. Model Weights
 
-DermaGuard is modular and will run heuristic baselines if no weights are provided. For full deep learning inference:
+DermaGuard automatically loads weights placed in `model_checkpoints/`:
 
 ```bash
 # Place your trained PyTorch checkpoint(s) in model_checkpoints/:
@@ -248,9 +248,6 @@ mkdir -p model_checkpoints
 # - best_efficientnet_b3.pth
 # - best_resnet50.pth
 # - best_vit_small.pth
-
-# Set optional Gemini API key for live LLM clinical explanations:
-export GEMINI_API_KEY="your-google-gemini-api-key"
 ```
 
 ---
@@ -504,8 +501,7 @@ DermaGuard/
 │   └── safety_agent.py            # Malignancy overrides & cross-agent conflict checks
 │
 ├── explanation/                   # Explainability & Visual Attention
-│   ├── gradcam.py                 # PyTorch Grad-CAM heatmap extraction
-│   └── gemini_explainer.py        # Gemini multimodal clinical explainer
+│   └── gradcam.py                 # PyTorch Grad-CAM heatmap extraction
 │
 ├── schema/                        # Typed contracts & data structures
 │   └── dermaguard_state.py        # Pydantic models & LangGraph TypedDict state
