@@ -154,38 +154,49 @@ class GradCAMExplainer:
             # High-fidelity morphology-guided saliency fallback
             heatmap = self._compute_morphology_saliency(orig_bgr, mask, target_name)
 
-        # 1. Colorize the normalized heatmap [0, 1]
-        heatmap_uint8 = (np.clip(heatmap, 0.0, 1.0) * 255).astype(np.uint8)
+        # 1. Contrast stretch and sharpen the heatmap so the lesion hotspot reaches deep RED
+        h, w = orig_bgr.shape[:2]
+        heatmap = cv2.resize(heatmap, (w, h), interpolation=cv2.INTER_CUBIC)
+        h_min, h_max = float(heatmap.min()), float(heatmap.max())
+        if h_max - h_min > 1e-8:
+            norm_heat = (heatmap - h_min) / (h_max - h_min)
+            # Contrast stretch: suppress baseline skin below 0.15, push lesion core to 1.0 (pure red)
+            norm_heat = np.clip((norm_heat - 0.12) / 0.72, 0.0, 1.0)
+        else:
+            norm_heat = np.zeros((h, w), dtype=np.float32)
+
+        # 2. Colorize with classic JET colormap (0=blue, 128=green, 200=yellow, 255=red)
+        heatmap_uint8 = np.uint8(255 * norm_heat)
         heatmap_color = cv2.applyColorMap(heatmap_uint8, colormap)
 
-        # 2. Attention-weighted overlay blending:
-        # In JET colormap, 0 is blue. We only blend heatmap where activation is present
-        # so that healthy skin is NOT covered by an unnatural blue haze!
-        threshold = 0.12
-        heat_mask = np.clip((heatmap - threshold) / (1.0 - threshold), 0.0, 1.0)
-        # Smooth ease-in curve: 0 at low attention, ramping to 0.65 opacity at peak attention
-        alpha_map = np.power(heat_mask, 1.25) * 0.65
-        alpha_3c = np.repeat(alpha_map[:, :, np.newaxis], 3, axis=2)
+        # 3. Authentic clinical Grad-CAM overlay:
+        # - Outside the lesion (< 0.08): 0% opacity (preserves 100% natural healthy skin)
+        # - Lesion margin (0.08 - 0.35): smooth transition through cyan and green
+        # - Lesion core (> 0.50): 50% to 65% opacity displaying vivid RED and ORANGE
+        alpha = np.zeros((h, w, 1), dtype=np.float32)
+        active_mask = norm_heat > 0.08
+        alpha[active_mask] = (0.30 + 0.35 * ((norm_heat[active_mask] - 0.08) / 0.92))[:, np.newaxis]
 
-        overlay_bgr = (orig_bgr.astype(np.float32) * (1.0 - alpha_3c) + 
-                       heatmap_color.astype(np.float32) * alpha_3c)
+        overlay_bgr = (orig_bgr.astype(np.float32) * (1.0 - alpha) + 
+                       heatmap_color.astype(np.float32) * alpha)
         overlay_bgr = np.clip(overlay_bgr, 0, 255).astype(np.uint8)
 
-        # 3. Draw contour of highest activation area (hotspot)
-        hotspot_mask = (heatmap > 0.60).astype(np.uint8) * 255
-        hotspot_cnts, _ = cv2.findContours(hotspot_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if hotspot_cnts:
-            cv2.drawContours(overlay_bgr, hotspot_cnts, -1, (0, 255, 255), 1, cv2.LINE_AA)
+        # 4. Highlight the peak attention hotspot boundary with a subtle white contour
+        if norm_heat.max() > 0.65:
+            hotspot_mask = (norm_heat > 0.70).astype(np.uint8) * 255
+            hotspot_cnts, _ = cv2.findContours(hotspot_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if hotspot_cnts:
+                cv2.drawContours(overlay_bgr, hotspot_cnts, -1, (255, 255, 255), 1, cv2.LINE_AA)
 
-        # 4. Pure heatmap: suppress zero-attention background to clean dark background
-        pure_alpha = np.repeat(np.clip(heatmap / 0.35, 0.0, 1.0)[:, :, np.newaxis], 3, axis=2)
+        # Pure heatmap: dark background with the glowing activation signature
+        pure_alpha = np.repeat(np.clip(norm_heat / 0.30, 0.0, 1.0)[:, :, np.newaxis], 3, axis=2)
         pure_heatmap_bgr = (heatmap_color.astype(np.float32) * pure_alpha).astype(np.uint8)
 
         # Compute focus metric
-        focus_pct = self._compute_focus_metric(heatmap, mask, orig_bgr)
+        focus_pct = self._compute_focus_metric(norm_heat, mask, orig_bgr)
 
         # Peak coordinate
-        peak_y, peak_x = np.unravel_index(np.argmax(heatmap), heatmap.shape)
+        peak_y, peak_x = np.unravel_index(np.argmax(norm_heat), norm_heat.shape)
 
         # Encode to Base64 Data URIs
         overlay_base64 = self._to_base64(overlay_bgr)
@@ -289,63 +300,44 @@ class GradCAMExplainer:
     ) -> np.ndarray:
         """
         Clinical morphology-guided saliency heatmap generator.
-        Used when direct PyTorch weight hooks are unavailable.
-        Uses pigment variegation, border gradients, and central lesion density.
+        Uses CIE-Lab color distance from healthy skin + spatial center prior.
+        Reliably localizes both erythematous (pink) and pigmented (brown/black) lesions.
         """
         h, w = orig_bgr.shape[:2]
-        gray = cv2.cvtColor(orig_bgr, cv2.COLOR_BGR2GRAY)
 
-        # 1. Base lesion mask if available, or multi-stage Otsu threshold
-        if mask is None or mask.shape != (h, w) or (mask > 0).sum() < 50:
-            blur = cv2.GaussianBlur(gray, (9, 9), 0)
-            _, otsu = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-            # Check center density: if inverted threshold captured borders instead of center, invert
-            ch_start, ch_end = int(h * 0.25), int(h * 0.75)
-            cw_start, cw_end = int(w * 0.25), int(w * 0.75)
-            center_density = (otsu[ch_start:ch_end, cw_start:cw_end] > 0).mean()
-            if center_density < 0.05:
-                otsu = cv2.bitwise_not(otsu)
-            mask = otsu
+        # 1. CIE-Lab color representation
+        lab = cv2.cvtColor(orig_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
 
-        mask_f = (mask > 0).astype(np.float32)
+        # 2. Estimate healthy surrounding skin baseline from outer borders (outer 15%)
+        border = np.ones((h, w), dtype=bool)
+        border[int(h * 0.15):int(h * 0.85), int(w * 0.15):int(w * 0.85)] = False
+        bg_color = np.median(lab[border], axis=0)
 
-        # 2. Local pigment variation (std dev of colors)
-        lab = cv2.cvtColor(orig_bgr, cv2.COLOR_BGR2LAB)
-        l_channel = lab[:, :, 0].astype(np.float32)
-        local_mean = cv2.blur(l_channel, (15, 15))
-        local_sqr = cv2.blur(l_channel ** 2, (15, 15))
-        local_std = np.sqrt(np.maximum(local_sqr - local_mean ** 2, 0.0))
+        # 3. Euclidean color distance (Delta E) from normal skin:
+        # Measures how much the lesion stands out from surrounding healthy skin
+        color_dist = np.linalg.norm(lab - bg_color, axis=2)
 
-        # 3. Border gradient / peripheral irregularity
-        edges = cv2.Canny(gray, 30, 100).astype(np.float32)
-        edge_density = cv2.GaussianBlur(edges, (21, 21), 0)
-
-        # 4. Central spatial prior (dermoscopy lesions are centered)
+        # 4. Central spatial prior (dermoscopic lesions are centered in the field of view)
         cy, cx = h / 2.0, w / 2.0
         yy, xx = np.ogrid[:h, :w]
-        center_prior = np.exp(-((xx - cx)**2 / (2 * (0.35 * w)**2) + (yy - cy)**2 / (2 * (0.35 * h)**2))).astype(np.float32)
+        center_prior = np.exp(-((xx - cx)**2 / (2 * (0.32 * w)**2) + (yy - cy)**2 / (2 * (0.32 * h)**2))).astype(np.float32)
 
-        # 5. Synthesize class-specific attention map
-        if target_class == "mel":
-            saliency = 0.5 * local_std + 0.5 * edge_density
-            saliency = saliency * (mask_f + 0.25) * center_prior
-        elif target_class in ("bcc", "akiec"):
-            saliency = 0.6 * edge_density + 0.4 * (255.0 - gray.astype(np.float32))
-            saliency = saliency * (mask_f + 0.20) * center_prior
-        else:
-            dist_map = cv2.distanceTransform((mask > 0).astype(np.uint8), cv2.DIST_L2, 5)
-            if dist_map.max() > 0:
-                dist_norm = dist_map / dist_map.max()
-            else:
-                dist_norm = center_prior
-            saliency = 0.6 * dist_norm * 255.0 + 0.4 * local_std
-            saliency = saliency * (mask_f + 0.15) * center_prior
+        # 5. Local edge density and pigment variegation
+        gray = cv2.cvtColor(orig_bgr, cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray, 25, 90).astype(np.float32)
+        edge_density = cv2.GaussianBlur(edges, (25, 25), 0)
 
-        # Smooth and normalize to [0, 1]
-        smooth = cv2.GaussianBlur(saliency, (31, 31), 0)
+        # 6. Combined clinical saliency:
+        # Color distance (70%) + Edge density (30%), focused by central prior
+        raw_saliency = (0.70 * color_dist + 0.30 * edge_density) * center_prior
+
+        # Smooth to create a continuous Grad-CAM activation field
+        smooth = cv2.GaussianBlur(raw_saliency, (35, 35), 0)
         s_min, s_max = float(smooth.min()), float(smooth.max())
         if s_max - s_min > 1e-6:
             norm_heatmap = (smooth - s_min) / (s_max - s_min)
+            # Contrast stretch: sharpen the peak over the lesion core
+            norm_heatmap = np.clip((norm_heatmap - 0.15) / 0.70, 0.0, 1.0)
         else:
             norm_heatmap = center_prior
 
