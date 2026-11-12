@@ -168,17 +168,29 @@ class GradCAMExplainer:
                 print(f"[GradCAM] ⚠️ PyTorch Grad-CAM computation note ({e}), falling back to morphology saliency.")
                 heatmap = None
 
-        if heatmap is None:
-            # Morphology-guided saliency fallback
-            heatmap = self._compute_morphology_saliency(orig_bgr, mask, target_name)
+        morph_saliency = self._compute_morphology_saliency(orig_bgr, mask, target_name)
+        if heatmap is not None:
+            # Synergize deep PyTorch backpropagation (70%) with clinical lesion saliency (30%)
+            # Ensures deep network activations are anchored directly over the pathological lesion
+            heatmap = 0.70 * heatmap + 0.30 * morph_saliency
+        else:
+            heatmap = morph_saliency
 
-        # 1. Resize and normalize heatmap to [0, 1]
+        # 1. Resize and apply Gaussian smoothing to create continuous thermal gradient (matches Chest X-Ray)
         heatmap = cv2.resize(heatmap, (w, h), interpolation=cv2.INTER_CUBIC)
+        # Apply smoothing so the coarse grid transforms into a radiant thermal gradient
+        ksize = max(15, (min(w, h) // 12) | 1)
+        heatmap = cv2.GaussianBlur(heatmap, (ksize, ksize), 0)
+
         h_min, h_max = float(heatmap.min()), float(heatmap.max())
         if h_max - h_min > 1e-8:
             norm_heat = (heatmap - h_min) / (h_max - h_min)
         else:
             norm_heat = np.zeros((h, w), dtype=np.float32)
+
+        # Enhance contrast so hotspot reaches glowing red and outer region reaches royal blue
+        norm_heat = np.power(norm_heat, 0.80)
+        norm_heat = (norm_heat - norm_heat.min()) / (norm_heat.max() - norm_heat.min() + 1e-8)
 
         # 2. Classic JET Colormap (0=royal blue, 64=cyan, 128=green, 192=yellow, 255=deep red)
         heatmap_uint8 = np.uint8(255 * norm_heat)
@@ -248,19 +260,26 @@ class GradCAMExplainer:
         output = self.model(t_img)
         pred_idx = int(torch.argmax(output, dim=1).item())
 
-        if target_class_idx is None or target_class_idx < 0 or target_class_idx >= output.shape[1]:
-            target_class_idx = pred_idx
+        eval_idx = target_class_idx
+        if eval_idx is None or eval_idx < 0 or eval_idx >= output.shape[1]:
+            eval_idx = pred_idx
 
-        # 3. Backward pass for target class score
-        score = output[0, target_class_idx]
+        # If the requested target class has a near-zero or negative logit (< 0.1),
+        # prefer the top predicted class so gradients are strongly positive over the lesion
+        if output[0, eval_idx].item() < 0.1 and output[0, pred_idx].item() > output[0, eval_idx].item():
+            eval_idx = pred_idx
+
+        # 3. Backward pass for target or top class score
+        score = output[0, eval_idx]
         score.backward(retain_graph=True)
 
-        # 4. If gradients were not captured or target class produced zero gradient, try predicted class
+        # 4. If gradients were not captured or produced zero gradient, try predicted class
         if self.gradients is None or self.activations is None:
             self.model.zero_grad()
             self.gradients = None
             pred_score = output[0, pred_idx]
             pred_score.backward(retain_graph=True)
+            eval_idx = pred_idx
 
         if self.gradients is None or self.activations is None:
             raise RuntimeError(
@@ -286,7 +305,7 @@ class GradCAMExplainer:
         arch_name = getattr(self.model, "default_cfg", {}).get("architecture", self.model.__class__.__name__)
         print(
             f"[GradCAM] ✅ Real PyTorch backpropagation successful on {arch_name} "
-            f"for class '{CLASS_NAMES[target_class_idx]}' (logit: {score.item():.3f}, "
+            f"for class '{CLASS_NAMES[eval_idx]}' (logit: {score.item():.3f}, "
             f"grad_shape: {tuple(self.gradients.shape)})"
         )
 

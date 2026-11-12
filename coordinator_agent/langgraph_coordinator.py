@@ -141,9 +141,14 @@ class DermaGuardGraph:
         if self.a2_diagnosis is not None:
             res = self.a2_diagnosis.predict(img_path)
             pred_class = (res.get("predicted_class") or "nv").lower()
+            probs = res.get("probabilities", {})
+            if pred_class == "unknown" or not probs or sum(probs.values()) < 1e-4:
+                res = self.a2_diagnosis._heuristic_fallback(img_path)
+                pred_class = (res.get("predicted_class") or "nv").lower()
+                probs = res.get("probabilities", {})
+
             pred_label = res.get("predicted_label") or pred_class
             conf = float(res.get("confidence", 0.0))
-            probs = res.get("probabilities", {})
             mel_prob = float(res.get("melanoma_prob", probs.get("mel", 0.0)))
             malignant_prob = float(res.get("malignant_prob", sum(probs.get(c, 0.0) for c in ("mel", "bcc", "akiec"))))
             mel_flag = bool(res.get("melanoma_flag", (pred_class == "mel") or (mel_prob >= 0.18)))

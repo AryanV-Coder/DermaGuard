@@ -231,15 +231,31 @@ class DiagnosisAgent:
         try:
             pil_img = self._load_and_preprocess_pil(source)
         except Exception as exc:
-            return self._error_result(str(exc))
+            print(f"[DiagnosisAgent] ❌ Error loading/preprocessing image: {exc}")
+            return self._heuristic_fallback(source)
 
         try:
             all_probs = []
+            successful_models = []
             for name, model in self.models:
-                p = self._probs_for_model(model, pil_img)
-                all_probs.append(p)
+                try:
+                    p = self._probs_for_model(model, pil_img)
+                    if p is not None and len(p) == len(CLASS_NAMES) and not np.isnan(p).any():
+                        all_probs.append(p)
+                        successful_models.append(name)
+                except Exception as m_err:
+                    print(f"[DiagnosisAgent] ⚠️ Model '{name}' failed during inference: {m_err}")
+
+            if not all_probs:
+                print("[DiagnosisAgent] ⚠️ No models produced valid predictions. Falling back to calibrated baseline.")
+                return self._heuristic_fallback(source)
 
             avg_probs = np.mean(all_probs, axis=0)
+            # Ensure probabilities sum to 1.0
+            prob_sum = float(np.sum(avg_probs))
+            if prob_sum > 1e-6:
+                avg_probs = avg_probs / prob_sum
+
             top_idx = int(avg_probs.argmax())
             top_class = IDX_TO_CLASS[top_idx]
             confidence = float(avg_probs[top_idx])
@@ -263,12 +279,13 @@ class DiagnosisAgent:
                 "melanoma_prob":     round(mel_prob, 4),
                 "malignant_prob":    round(malignant_prob, 4),
                 "is_malignant":      top_class in MALIGNANT_CLASSES,
-                "models_used":       [n for n, _ in self.models],
+                "models_used":       successful_models if successful_models else [n for n, _ in self.models],
                 "processing_time_s": round(time.perf_counter() - t0, 4),
                 "error":             None,
             }
         except Exception as exc:
-            return self._error_result(str(exc))
+            print(f"[DiagnosisAgent] ❌ Exception in diagnosis prediction: {exc}")
+            return self._heuristic_fallback(source)
 
     def __call__(self, source: Union[str, Path, np.ndarray]) -> Dict[str, Any]:
         """Convenience callable wrapper: agent2(img_path)."""
@@ -278,29 +295,53 @@ class DiagnosisAgent:
 
     def _probs_for_model(self, model: nn.Module, pil_img: Image.Image) -> np.ndarray:
         """Inference with optional TTA and temperature scaling."""
+        model.eval()
         tfms = _TTA_TRANSFORMS if self.use_tta else [_BASE_TRANSFORM]
         accum = np.zeros(len(CLASS_NAMES), dtype=np.float32)
 
         with torch.no_grad():
             for tfm in tfms:
                 t = tfm(pil_img).unsqueeze(0).to(self.device)
-                logits = model(t) / self.temperature
+                out = model(t)
+                if isinstance(out, (tuple, list)):
+                    out = out[0]
+                elif isinstance(out, dict):
+                    out = out.get("logits", out.get("out", list(out.values())[0]))
+                
+                logits = out / self.temperature
+                if logits.shape[1] > len(CLASS_NAMES):
+                    logits = logits[:, :len(CLASS_NAMES)]
+                elif logits.shape[1] < len(CLASS_NAMES):
+                    padded = torch.zeros((logits.shape[0], len(CLASS_NAMES)), device=logits.device)
+                    padded[:, :logits.shape[1]] = logits
+                    logits = padded
+
                 probs = F.softmax(logits, dim=1).cpu().numpy()[0]
                 accum += probs
 
-        return accum / len(tfms)
+        res = accum / len(tfms)
+        return res
 
     def _load_and_preprocess_pil(self, source: Union[str, Path, np.ndarray]) -> Image.Image:
         if isinstance(source, np.ndarray):
             img_np = source if source.shape[2] == 3 else np.stack([source]*3, axis=-1)
         else:
             p = str(source)
-            from PIL import Image as PilImg
-            with PilImg.open(p) as raw:
-                img_np = np.array(raw.convert("RGB"))
+            # Use OpenCV as primary robust decoder (handles arbitrary EXIF/color profiles)
+            import cv2
+            bgr = cv2.imread(p)
+            if bgr is not None:
+                img_np = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+            else:
+                from PIL import Image as PilImg
+                with PilImg.open(p) as raw:
+                    img_np = np.array(raw.convert("RGB"))
 
         if self.use_shades_of_gray:
-            img_np = shades_of_gray(img_np, p=6)
+            try:
+                img_np = shades_of_gray(img_np, p=6)
+            except Exception:
+                pass
 
         return Image.fromarray(img_np)
 

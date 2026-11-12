@@ -162,22 +162,43 @@ flowchart TD
 
 ### Explanability Engine: Grad-CAM Visual Heatmaps
 *Location: [`explanation/`](explanation/)*
-* **Visual Attention**: PyTorch Grad-CAM extracts spatial gradients from the final convolutional layer, producing high-resolution heatmaps overlaid on the lesion. Quantifies the percentage of attention focused inside the segmented lesion boundary.
-* **Deterministic Metrics**: Peak attention coordinates, focus percentage inside lesion boundary, and clinical category descriptions are computed directly without third-party external dependencies.
+* **Real PyTorch Backpropagation**: Attaches tensor autograd forward and backward hooks directly to the convolutional feature maps of the diagnosis network (`features[-1]` on EfficientNet / `layer4` on ResNet).
+* **Winning-Class Dynamic Auto-Targeting**: Automatically detects when a requested class has a near-zero or negative logit ($<0.1$), dynamically backpropagating the winning predicted class so gradients reflect true positive diagnostic features.
+* **Continuous Thermal Gradient**: Transforms coarse $7 \times 7$ feature grids into continuous radiant gradients via 2D Gaussian smoothing (`cv2.GaussianBlur`) and contrast stretching, reproducing standard clinical radiology thermal overlays (Deep Red $\to$ Orange $\to$ Yellow $\to$ Green $\to$ Cyan $\to$ Royal Blue).
+* **Lesion-Anchored Synergy**: Blends deep convolutional activations ($70\%$) with physical CIE-$\Delta E$ color distance contrast ($30\%$), ensuring the thermal hotspot is centered over the pathology.
+* **Semi-Transparent Anatomical Blend**: Applies a $55/45$ alpha blend (`0.55 * original + 0.45 * heatmap`) so pigment networks and skin textures remain clearly visible beneath the heatmap.
+* **Deterministic Metrics**: Computes peak attention coordinates and percentage of attention focused inside the segmented lesion boundary.
 
 ---
 
-## 🖥️ Interactive Demo Dashboard
+## 🖥️ Modern Web Dashboard & Interactive UI
 
-DermaGuard includes a built-in, browser-accessible visual clinical dashboard.
+DermaGuard offers two frontends: a modern **React 18 + Vite** production clinical web dashboard and a lightweight built-in FastAPI demo.
 
-To launch the dashboard:
+### 1. Modern React Clinical Dashboard (`frontend/`)
 
+Built with React 18, Vite, and modular CSS:
+- **Clean Clinical Light Theme**: Minimalist hospital-grade UI featuring a stethoscope logo (`🩺`) with crisp SVG status indicators across all agent cards.
+- **Single-Image Ingestion & Clinical Metadata**: Patient age, sex, and anatomical site selectors.
+- **Side-by-Side Visual Attention**: Direct side-by-side comparison of **Original Image** and the **Grad-CAM Heatmap** overlay.
+- **Comprehensive 6-Agent Triage Cards**: Real-time status, confidence, 7-class probability distributions, ABCD morphometrics, epidemiological risk scores, and safety veto audits.
+
+To run the React frontend:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Open **`http://localhost:3000`** in your browser.
+
+### 2. Built-in FastAPI Server & API
+
+To run the backend API service:
 ```bash
 uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
-
-Open **`http://127.0.0.1:8000/demo`** in your browser.
+- API Docs: **`http://localhost:8000/docs`**
+- Lightweight Built-in Demo: **`http://localhost:8000/demo`**
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -469,7 +490,7 @@ The tests generate deterministic synthetic patterns covering edge cases:
 
 ```text
 DermaGuard/
-├── app.py                         # FastAPI backend & interactive HTML demo dashboard
+├── app.py                         # FastAPI backend & API server
 ├── run_dermaguard.py              # CLI runner for the 6-agent LangGraph workflow
 ├── six_agent_pipeline.py          # Batch evaluator & Track 2 CSV submission generator
 ├── pipeline.py                    # Legacy single/batch evaluation pipeline
@@ -477,6 +498,10 @@ DermaGuard/
 ├── agent2_diagnosis.ipynb         # Diagnostic model training & calibration notebook
 ├── eval_pipeline.ipynb            # Full 6-agent summit evaluation notebook
 ├── API_DOCUMENTATION.md           # API endpoints, request schemas, & integration guide
+│
+├── frontend/                      # Modern React 18 + Vite clinical dashboard
+│   ├── src/components/            # Header, UploadPanel, DecisionBanner, HeatmapViewer, AgentCards
+│   └── package.json               # Frontend dependencies and Vite build scripts
 │
 ├── coordinator_agent/             # Agent 6: LangGraph orchestrator & decision engine
 │   ├── coordinator_agent.py       # Multi-agent arbitration rules
