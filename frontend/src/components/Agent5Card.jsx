@@ -60,3 +60,4 @@ export default function Agent5Card({ data }) {
     </AgentCard>
   )
 }
+

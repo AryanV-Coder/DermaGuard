@@ -1,0 +1,35 @@
+# DermaGuard — Core Python Dependencies
+# Recommended Python Version: Python 3.11 or Python 3.12
+# (Do NOT use Python 3.14+ as PyTorch wheels are not yet available)
+
+# --- Deep Learning & Neural Inference ---
+torch>=2.2.0
+torchvision>=0.17.0
+timm>=0.9.12
+
+# --- Web Framework & REST API ---
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+python-multipart>=0.0.9
+pydantic>=2.6.0
+httpx>=0.27.0
+
+# --- Multi-Agent Orchestration ---
+langgraph>=0.2.0
+langchain-core>=0.3.0
+
+# --- Computer Vision & Image Processing ---
+opencv-python>=4.9.0
+pillow>=10.2.0
+numpy>=1.26.0,<2.2.0
+
+# --- Data Science, Evaluation & Notebooks ---
+pandas>=2.2.0
+scikit-learn>=1.4.0
+matplotlib>=3.8.0
+seaborn>=0.13.0
+tqdm>=4.66.0
+
+# --- Testing & Quality Assurance ---
+pytest>=8.0.0
+

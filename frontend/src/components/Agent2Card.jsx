@@ -75,3 +75,4 @@ export default function Agent2Card({ data }) {
     </AgentCard>
   )
 }
+

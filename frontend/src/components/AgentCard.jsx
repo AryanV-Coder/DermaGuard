@@ -76,3 +76,4 @@ export function TagList({ tags, color }) {
     </div>
   )
 }
+

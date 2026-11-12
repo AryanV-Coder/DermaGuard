@@ -50,3 +50,4 @@ export default function Agent6Card({ data, decision, urgency }) {
     </AgentCard>
   )
 }
+

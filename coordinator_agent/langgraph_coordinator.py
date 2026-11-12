@@ -68,20 +68,38 @@ class DermaGuardGraph:
         self.explainer = GeminiExplainer(api_key=gemini_api_key)
 
         self.a2_diagnosis = None
-        if DIAGNOSIS_AVAILABLE and model_path and Path(model_path).exists():
-            try:
-                self.a2_diagnosis = DiagnosisAgent(model_path=model_path)
-                print(f"  [Agent 2] Diagnosis model loaded from: {model_path}")
-            except Exception as e:
-                print(f"  [Agent 2] Could not load diagnosis model: {e}. Fallback active.")
+        if DIAGNOSIS_AVAILABLE:
+            if not model_path or not Path(model_path).exists():
+                candidates = [
+                    ROOT / "model_checkpoints",
+                    ROOT / "checkpoints",
+                    ROOT / "model_checkpoints" / "best_efficientnet_b0.pth",
+                    ROOT / "checkpoints" / "best_efficientnet_b0.pth",
+                    ROOT / "checkpoints" / "efficientnet_b0_best.pth",
+                    ROOT / "model_extracted" / "diagnosis_model",
+                    Path.home() / "dermaguard_checkpoints",
+                ]
+                model_path = next((str(p) for p in candidates if p.exists()), None)
+
+            if model_path and Path(model_path).exists():
+                try:
+                    self.a2_diagnosis = DiagnosisAgent(model_path=model_path)
+                    print(f"  [Agent 2] Diagnosis model loaded from: {model_path}")
+                except Exception as e:
+                    print(f"  [Agent 2] Could not load diagnosis model: {e}. Fallback active.")
 
         self.graph = self._build_graph()
         self.app = self.graph.compile()
 
-        # Initialize Grad-CAM Explainer
+        # Initialize Grad-CAM Explainer with convolutional model
         diag_model = None
         if self.a2_diagnosis and hasattr(self.a2_diagnosis, "models") and len(self.a2_diagnosis.models) > 0:
-            diag_model = self.a2_diagnosis.models[0][1]
+            for name, m in self.a2_diagnosis.models:
+                if any(k in name.lower() for k in ("efficientnet", "resnet", "conv", "b0", "b3")):
+                    diag_model = m
+                    break
+            if diag_model is None:
+                diag_model = self.a2_diagnosis.models[0][1]
         self.gradcam = GradCAMExplainer(model=diag_model)
         print("[DermaGuardGraph] LangGraph StateGraph compiled & Grad-CAM engine ready.\n")
 

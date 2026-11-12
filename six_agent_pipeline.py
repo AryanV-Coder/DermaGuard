@@ -224,7 +224,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--val-csv", default=r"c:\Users\goelt\Downloads\image_quality_agent\val_split.csv")
     parser.add_argument("--image-dir", default=r"C:\Users\goelt\.cache\kagglehub\datasets\kmader\skin-cancer-mnist-ham10000\versions\2")
-    parser.add_argument("--model", default=r"c:\Users\goelt\Downloads\image_quality_agent\diagnosis_model.pth.zip")
+    default_model = (
+        ROOT / "model_checkpoints" if (ROOT / "model_checkpoints").exists()
+        else (ROOT / "checkpoints" if (ROOT / "checkpoints").exists() else ROOT / "model_extracted" / "diagnosis_model")
+    )
+    parser.add_argument("--model", default=str(default_model), help="Path to diagnosis model file or checkpoint directory")
     parser.add_argument("--out", default=r"c:\Users\goelt\Downloads\image_quality_agent\results\six_agent_evaluation.csv")
     parser.add_argument("--submission-csv", default=r"c:\Users\goelt\Downloads\image_quality_agent\results\final_submission.csv")
     parser.add_argument("--limit", type=int, default=None)

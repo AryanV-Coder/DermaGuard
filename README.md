@@ -241,9 +241,13 @@ python -m pip install \
 DermaGuard is modular and will run heuristic baselines if no weights are provided. For full deep learning inference:
 
 ```bash
-# Place your trained PyTorch checkpoint in any of these default paths:
-mkdir -p checkpoints
-cp /path/to/efficientnet_b0_best.pth checkpoints/efficientnet_b0_best.pth
+# Place your trained PyTorch checkpoint(s) in model_checkpoints/:
+mkdir -p model_checkpoints
+# Supports single checkpoints or the full 4-model ensemble:
+# - best_efficientnet_b0.pth
+# - best_efficientnet_b3.pth
+# - best_resnet50.pth
+# - best_vit_small.pth
 
 # Set optional Gemini API key for live LLM clinical explanations:
 export GEMINI_API_KEY="your-google-gemini-api-key"

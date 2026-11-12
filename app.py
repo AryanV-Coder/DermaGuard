@@ -75,13 +75,19 @@ def get_engine() -> DermaGuardGraph:
     global _engine
     if _engine is None:
         print("[API] Initializing DermaGuard Multi-Agent Engine...")
-        # Check standard checkpoint paths
+        # Check standard checkpoint paths - prioritize model_checkpoints directory
         model_candidates = [
+            ROOT_DIR / "model_checkpoints",
+            ROOT_DIR / "checkpoints",
+            ROOT_DIR / "model_checkpoints" / "best_efficientnet_b0.pth",
+            ROOT_DIR / "checkpoints" / "best_efficientnet_b0.pth",
             ROOT_DIR / "checkpoints" / "efficientnet_b0_best.pth",
+            ROOT_DIR / "model_extracted" / "diagnosis_model",
             ROOT_DIR / "model_extracted" / "efficientnet_b0.pth",
-            Path.home() / "dermaguard_checkpoints" / "efficientnet_b0_best.pth",
+            Path.home() / "dermaguard_checkpoints",
         ]
         chosen_model = next((str(p) for p in model_candidates if p.exists()), None)
+        print(f"[API] Selected model path: {chosen_model}")
         _engine = DermaGuardGraph(model_path=chosen_model)
     return _engine
 

@@ -40,21 +40,82 @@ try:
 except ImportError:
     TORCH_AVAILABLE = False
 
-# ── Class mapping ──────────────────────────────────────────────────────────────
-CLASS_NAMES = ["akiec", "bcc", "bkl", "df", "mel", "nv", "vasc"]
-LABEL_MAP = {c: i for i, c in enumerate(CLASS_NAMES)}
-IDX_TO_CLASS = {i: c for i, c in enumerate(CLASS_NAMES)}
+try:
+    import timm
+    TIMM_AVAILABLE = True
+except ImportError:
+    TIMM_AVAILABLE = False
+
+# ── Class mapping (Matches HAM10000 training order in checkpoints) ─────────────
+LABEL_MAP = {"nv": 0, "mel": 1, "bkl": 2, "bcc": 3, "akiec": 4, "vasc": 5, "df": 6}
+IDX_TO_CLASS = {v: k for k, v in LABEL_MAP.items()}
+CLASS_NAMES = [IDX_TO_CLASS[i] for i in range(len(LABEL_MAP))]
 MALIGNANT_CLASSES = {"mel", "bcc", "akiec"}
 
 CLASS_FULL = {
-    "akiec": "Actinic Keratoses / Bowen's Disease",
-    "bcc":   "Basal Cell Carcinoma",
-    "bkl":   "Benign Keratosis-like Lesions",
-    "df":    "Dermatofibroma",
+    "nv":    "Melanocytic Nevus",
     "mel":   "Melanoma",
-    "nv":    "Melanocytic Nevi",
+    "bkl":   "Benign Keratosis-like Lesions",
+    "bcc":   "Basal Cell Carcinoma",
+    "akiec": "Actinic Keratosis / Bowen's Disease",
     "vasc":  "Vascular Lesions",
+    "df":    "Dermatofibroma",
 }
+
+# ── Checkpoint candidate specifications ───────────────────────────────────────
+CANDIDATE_SPECS = [
+    ("efficientnet_b0",       ["best_efficientnet_b0.pth", "efficientnet_b0.pth", "efnb0.pth"]),
+    ("efficientnet_b3",       ["best_efficientnet_b3.pth", "efficientnet_b3.pth", "efnb3.pth"]),
+    ("resnet50",              ["best_resnet50.pth", "resnet50.pth"]),
+    ("vit_small_patch16_224", ["best_vit_small.pth", "vit_small.pth", "best_vit.pth", "vit.pth"]),
+    ("densenet121",           ["best_densenet121.pth", "densenet121.pth"]),
+    ("convnext_tiny",         ["best_convnext_tiny.pth", "convnext_tiny.pth"]),
+]
+
+
+def _infer_arch_name(filename_or_stem: str) -> str:
+    s = filename_or_stem.lower()
+    if "efficientnet_b3" in s or "efnb3" in s:
+        return "efficientnet_b3"
+    elif "efficientnet_b0" in s or "efnb0" in s:
+        return "efficientnet_b0"
+    elif "resnet50" in s or "resnet" in s:
+        return "resnet50"
+    elif "vit_small" in s or "vit" in s:
+        return "vit_small_patch16_224"
+    elif "densenet121" in s or "densenet" in s:
+        return "densenet121"
+    elif "convnext" in s:
+        return "convnext_tiny"
+    return "efficientnet_b0"
+
+
+def _instantiate_model(arch_name: str, num_classes: int = len(CLASS_NAMES)) -> Optional[Any]:
+    """Creates model architecture using timm first, then torchvision fallback."""
+    if TIMM_AVAILABLE:
+        try:
+            return timm.create_model(arch_name, pretrained=False, num_classes=num_classes)
+        except Exception:
+            pass
+
+    if TORCH_AVAILABLE:
+        try:
+            if arch_name == "efficientnet_b0":
+                m = models.efficientnet_b0(weights=None)
+                m.classifier[1] = nn.Linear(m.classifier[1].in_features, num_classes)
+                return m
+            elif arch_name == "efficientnet_b3":
+                m = models.efficientnet_b3(weights=None)
+                m.classifier[1] = nn.Linear(m.classifier[1].in_features, num_classes)
+                return m
+            elif arch_name == "resnet50":
+                m = models.resnet50(weights=None)
+                m.fc = nn.Linear(m.fc.in_features, num_classes)
+                return m
+        except Exception:
+            pass
+    return None
+
 
 # ── Preprocessing & Color Constancy ───────────────────────────────────────────
 def shades_of_gray(img_np: np.ndarray, p: int = 6) -> np.ndarray:
@@ -89,6 +150,13 @@ if TORCH_AVAILABLE:
         ]),
         transforms.Compose([
             transforms.Resize((224, 224)),
+            transforms.RandomVerticalFlip(p=1.0),
+            transforms.ToTensor(),
+            _NORMALIZE,
+        ]),
+        transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.RandomHorizontalFlip(p=1.0),
             transforms.RandomVerticalFlip(p=1.0),
             transforms.ToTensor(),
             _NORMALIZE,
@@ -236,10 +304,12 @@ class DiagnosisAgent:
 
         return Image.fromarray(img_np)
 
-    def _load_single_model(self, model_path: Path) -> Optional[nn.Module]:
+    def _load_single_model(self, model_path: Path, arch_hint: Optional[str] = None) -> Optional[nn.Module]:
+        if not TORCH_AVAILABLE:
+            return None
         try:
             ckpt = torch.load(str(model_path), map_location=self.device, weights_only=False)
-            if not isinstance(ckpt, dict):
+            if isinstance(ckpt, nn.Module):
                 return ckpt.to(self.device).eval()
 
             state_dict = (
@@ -248,24 +318,60 @@ class DiagnosisAgent:
                 or ckpt.get("state_dict")
                 or ckpt
             )
+            if not isinstance(state_dict, dict):
+                return None
+
             # Remove module. prefix if DataParallel
             if any(k.startswith("module.") for k in state_dict):
                 state_dict = {k[7:]: v for k, v in state_dict.items()}
 
-            model = models.efficientnet_b0(weights=None)
-            in_features = model.classifier[1].in_features
-            model.classifier[1] = nn.Linear(in_features, len(CLASS_NAMES))
-            model.load_state_dict(state_dict, strict=True)
+            arch = arch_hint or _infer_arch_name(model_path.name)
+            model = _instantiate_model(arch, len(CLASS_NAMES))
+            if model is None:
+                print(f"[DiagnosisAgent] Warning: could not instantiate architecture '{arch}' for {model_path.name}")
+                return None
+
+            try:
+                model.load_state_dict(state_dict, strict=True)
+            except Exception:
+                model.load_state_dict(state_dict, strict=False)
+
             return model.to(self.device).eval()
         except Exception as e:
             print(f"[DiagnosisAgent] Warning: could not load {model_path}: {e}")
             return None
 
     def _load_checkpoint_dir(self, checkpoint_dir: Path):
-        for pth in checkpoint_dir.glob("*.pth"):
-            m = self._load_single_model(pth)
-            if m is not None:
-                self.models.append((pth.stem, m))
+        """Loads all models from a checkpoint directory into the ensemble."""
+        loaded_count = 0
+        seen_files = set()
+
+        # 1. Match known candidate specs
+        for arch_name, candidate_files in CANDIDATE_SPECS:
+            for cf in candidate_files:
+                pth = checkpoint_dir / cf
+                if pth.exists() and pth not in seen_files:
+                    m = self._load_single_model(pth, arch_hint=arch_name)
+                    if m is not None:
+                        self.models.append((arch_name, m))
+                        seen_files.add(pth)
+                        loaded_count += 1
+                        print(f"  [DiagnosisAgent] Loaded {arch_name} from {pth.name} ✅")
+                    break
+
+        # 2. Match any remaining .pth files in the directory
+        for pth in sorted(checkpoint_dir.glob("*.pth")):
+            if pth not in seen_files:
+                arch_name = _infer_arch_name(pth.name)
+                m = self._load_single_model(pth, arch_hint=arch_name)
+                if m is not None:
+                    self.models.append((arch_name, m))
+                    seen_files.add(pth)
+                    loaded_count += 1
+                    print(f"  [DiagnosisAgent] Loaded {arch_name} from {pth.name} ✅")
+
+        if loaded_count > 0:
+            print(f"[DiagnosisAgent] 🚀 Ensemble ready: {loaded_count} model(s) loaded from {checkpoint_dir}")
 
     def _heuristic_fallback(self, source: Any) -> Dict[str, Any]:
         """Graceful baseline if weights are not available locally."""

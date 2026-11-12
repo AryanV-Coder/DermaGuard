@@ -37,3 +37,4 @@ export default function Agent1Card({ data }) {
     </AgentCard>
   )
 }
+
