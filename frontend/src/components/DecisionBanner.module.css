@@ -1,0 +1,66 @@
+.banner {
+  border-radius: var(--radius-xl);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(16px);
+}
+.green {
+  background: rgba(16,185,129,0.08);
+  border: 1.5px solid rgba(16,185,129,0.4);
+}
+.red {
+  background: rgba(239,68,68,0.08);
+  border: 1.5px solid rgba(239,68,68,0.4);
+}
+.amber {
+  background: rgba(245,158,11,0.08);
+  border: 1.5px solid rgba(245,158,11,0.4);
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.left { display: flex; align-items: center; gap: 1rem; }
+.icon { font-size: 2.2rem; flex-shrink: 0; }
+.decision {
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  margin-bottom: 0.3rem;
+}
+.green .decision { color: var(--green); }
+.red .decision { color: var(--red); }
+.amber .decision { color: var(--amber); }
+.desc { font-size: 0.82rem; color: var(--text-muted); }
+
+.urgencyBadge {
+  font-size: 0.8rem;
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.urg_green { background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.3); color: var(--green); }
+.urg_red { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); color: var(--red); }
+.urg_amber { background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.3); color: var(--amber); }
+
+.rationale {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255,255,255,0.07);
+}
+.rationaleIcon { flex-shrink: 0; font-size: 1rem; margin-top: 0.1rem; }
+.rationale p {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  line-height: 1.65;
+  font-style: italic;
+}

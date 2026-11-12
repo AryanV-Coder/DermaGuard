@@ -1,0 +1,130 @@
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-card);
+}
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem 1rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.headerLeft { display: flex; align-items: flex-start; gap: 0.75rem; }
+.headerIcon { font-size: 1.3rem; margin-top: 0.1rem; }
+.cardTitle { font-size: 1rem; font-weight: 700; color: var(--text-primary); }
+.cardSub { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.2rem; }
+.classLabel { color: var(--teal-light); font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+
+.focusChip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(13,148,136,0.1);
+  border: 1px solid rgba(13,148,136,0.3);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 1rem;
+  flex-shrink: 0;
+}
+.focusPct { font-size: 1.3rem; font-weight: 800; color: var(--teal-light); line-height: 1; }
+.focusLabel { font-size: 0.65rem; color: var(--text-dim); margin-top: 0.2rem; text-align: center; }
+
+/* View tabs */
+.viewTabs {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0 1.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.5rem 0.6rem;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text-muted);
+  font-family: inherit;
+  min-width: 100px;
+}
+.tab:hover:not(:disabled) { border-color: rgba(13,148,136,0.4); color: var(--text-primary); }
+.tab:disabled { opacity: 0.35; cursor: not-allowed; }
+.tabActive {
+  background: rgba(13,148,136,0.12);
+  border-color: var(--teal);
+  color: var(--teal-light);
+}
+.tabLabel { font-size: 0.8rem; font-weight: 600; }
+.tabDesc { font-size: 0.65rem; color: inherit; opacity: 0.7; }
+
+/* Image */
+.imageWrapper {
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+}
+.heatmapImg {
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  display: block;
+}
+.noImage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-dim);
+  font-size: 0.875rem;
+  padding: 3rem;
+}
+.noImage span { font-size: 2rem; }
+
+/* Focus bar */
+.focusBar { padding: 1rem 1.5rem 0; }
+.focusBarLabel {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 0.4rem;
+}
+.focusBarPct { font-weight: 700; color: var(--teal-light); }
+.focusTrack {
+  height: 6px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.focusFill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--teal), var(--sky));
+  border-radius: 999px;
+  transition: width 1s ease;
+}
+
+/* Description */
+.description {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 1rem 1.5rem 1.25rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.65;
+  border-top: 1px solid var(--border);
+  margin-top: 1rem;
+}
+.descIcon { flex-shrink: 0; font-size: 0.95rem; margin-top: 0.1rem; }

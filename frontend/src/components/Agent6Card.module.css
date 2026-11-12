@@ -1,0 +1,20 @@
+.bigDecision {
+  text-align: center;
+  padding: 0.5rem 0;
+}
+.bigLabel {
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.col_green { color: var(--green); }
+.col_red { color: var(--red); }
+.col_amber { color: var(--amber); }
+
+.urgency_green { color: var(--green); font-weight: 600; }
+.urgency_red { color: var(--red); font-weight: 600; }
+.urgency_amber { color: var(--amber); font-weight: 600; }
+
+.tier_green { color: var(--green); font-weight: 600; }
+.tier_red { color: var(--red); font-weight: 600; }
+.tier_amber { color: var(--amber); font-weight: 600; }
