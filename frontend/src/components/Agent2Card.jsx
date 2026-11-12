@@ -36,7 +36,6 @@ export default function Agent2Card({ data }) {
     <AgentCard
       number={2}
       title="Diagnosis Agent"
-      icon="🧠"
       status={predicted.toUpperCase()}
       statusColor={isMalignant ? 'red' : 'teal'}
     >
@@ -54,7 +53,7 @@ export default function Agent2Card({ data }) {
 
       {melFlag && (
         <div className={styles.flagBanner}>
-          🚨 <strong>Melanoma flag active</strong> — specialist review mandatory
+          <strong>Melanoma flag active</strong> — specialist review mandatory
         </div>
       )}
 
@@ -75,4 +74,3 @@ export default function Agent2Card({ data }) {
     </AgentCard>
   )
 }
-

@@ -23,7 +23,6 @@ export default function Agent3Card({ data }) {
     <AgentCard
       number={3}
       title="Lesion Analysis (ABCD)"
-      icon="📐"
       status={suspicion}
       statusColor={suspicionColor(suspicion)}
     >
@@ -44,7 +43,7 @@ export default function Agent3Card({ data }) {
           <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-dim)', fontWeight: 600, marginBottom: '0.4rem' }}>Reliability Flags</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
             {flags.map((f, i) => (
-              <span key={i} style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', color: '#fcd34d', fontSize: '0.68rem', padding: '0.2rem 0.5rem', borderRadius: '999px' }}>
+              <span key={i} style={{ background: '#fef3c7', border: '1px solid #fde68a', color: '#b45309', fontSize: '0.68rem', padding: '0.2rem 0.5rem', borderRadius: '999px', fontWeight: 600 }}>
                 {f}
               </span>
             ))}
@@ -54,4 +53,3 @@ export default function Agent3Card({ data }) {
     </AgentCard>
   )
 }
-

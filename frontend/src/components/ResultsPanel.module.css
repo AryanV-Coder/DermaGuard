@@ -7,37 +7,9 @@
 .agentsGrid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 1rem;
+  gap: 1.1rem;
 }
 
 @media (max-width: 1280px) {
   .agentsGrid { grid-template-columns: 1fr; }
 }
-
-/* Raw JSON */
-.rawJson {
-  background: rgba(0,0,0,0.3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-.rawSummary {
-  padding: 0.7rem 1rem;
-  font-size: 0.8rem;
-  color: var(--text-dim);
-  cursor: pointer;
-  user-select: none;
-  font-weight: 500;
-}
-.rawSummary:hover { color: var(--text-muted); }
-.rawPre {
-  padding: 1rem;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.72rem;
-  color: #94a3b8;
-  overflow-x: auto;
-  max-height: 400px;
-  overflow-y: auto;
-  border-top: 1px solid var(--border);
-}
-

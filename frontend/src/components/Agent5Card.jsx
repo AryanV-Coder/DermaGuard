@@ -20,31 +20,27 @@ export default function Agent5Card({ data }) {
     <AgentCard
       number={5}
       title="Safety & Veto Engine"
-      icon="🛡️"
       status={severity}
       statusColor={severityColor(severity)}
     >
       {veto && (
         <div className={styles.vetoBanner}>
-          <span>🚫</span>
           <strong>VETO ACTIVE — Mandatory specialist referral</strong>
         </div>
       )}
       {!veto && severity === 'CLEAR' && (
         <div className={styles.clearBanner}>
-          <span>✅</span>
           <strong>All safety checks passed — no conflicts detected</strong>
         </div>
       )}
       {severity === 'WARN' && (
         <div className={styles.warnBanner}>
-          <span>⚠️</span>
           <strong>Safety warnings raised</strong>
         </div>
       )}
 
-      <InfoRow label="Must Refer" value={mustRefer ? '🔴 Yes' : '🟢 No'} />
-      <InfoRow label="Veto Triggered" value={veto ? '🔴 Yes' : '🟢 No'} />
+      <InfoRow label="Must Refer" value={mustRefer ? 'Yes' : 'No'} />
+      <InfoRow label="Veto Triggered" value={veto ? 'Yes' : 'No'} />
       <InfoRow label="Safety Severity" value={severity} />
 
       <div>
@@ -54,7 +50,7 @@ export default function Agent5Card({ data }) {
 
       {justification && (
         <div className={styles.justification}>
-          <span>📋</span> {justification}
+          {justification}
         </div>
       )}
     </AgentCard>

@@ -1,12 +1,12 @@
 import styles from './AgentCard.module.css'
 
-export function AgentCard({ number, title, icon, status, statusColor, children }) {
+export function AgentCard({ number, title, status, statusColor, children }) {
   const colorClass = statusColor || 'teal'
   return (
     <div className={styles.card}>
       <div className={styles.header}>
         <div className={styles.agentBadge}>
-          <span className={styles.agentIcon}>{icon}</span>
+          <span className={styles.numBadge}>{number}</span>
           <div>
             <div className={styles.agentNum}>Agent {number}</div>
             <div className={styles.agentTitle}>{title}</div>
@@ -76,4 +76,3 @@ export function TagList({ tags, color }) {
     </div>
   )
 }
-

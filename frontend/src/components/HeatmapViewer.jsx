@@ -12,9 +12,9 @@ const CLASS_FULL_NAMES = {
 }
 
 const VIEWS = [
-  { key: 'gradcam_overlay', label: '🌡️ Grad-CAM Overlay', desc: 'CAM fused with original' },
-  { key: 'original_image', label: '📸 Original', desc: 'Input dermoscopy image' },
-  { key: 'pure_heatmap', label: '🔥 Pure Heatmap', desc: 'Raw activation map' },
+  { key: 'gradcam_overlay', label: 'Grad-CAM Overlay', desc: 'CAM fused with original' },
+  { key: 'original_image', label: 'Original Image', desc: 'Input dermoscopy image' },
+  { key: 'pure_heatmap', label: 'Heatmap Only', desc: 'Raw activation map' },
 ]
 
 export default function HeatmapViewer({ visualizations, predictedLabel }) {
@@ -30,7 +30,6 @@ export default function HeatmapViewer({ visualizations, predictedLabel }) {
     <div className={styles.card}>
       <div className={styles.cardHeader}>
         <div className={styles.headerLeft}>
-          <span className={styles.headerIcon}>🌡️</span>
           <div>
             <h3 className={styles.cardTitle}>Grad-CAM Visual Attention</h3>
             <p className={styles.cardSub}>
@@ -68,7 +67,6 @@ export default function HeatmapViewer({ visualizations, predictedLabel }) {
           <img src={src} alt={activeView} className={styles.heatmapImg} />
         ) : (
           <div className={styles.noImage}>
-            <span>🚫</span>
             <p>Visualization not available</p>
           </div>
         )}
@@ -93,7 +91,6 @@ export default function HeatmapViewer({ visualizations, predictedLabel }) {
       {/* Description */}
       {description && (
         <p className={styles.description}>
-          <span className={styles.descIcon}>💡</span>
           {description}
         </p>
       )}

@@ -44,12 +44,6 @@ export default function ResultsPanel({ result }) {
         <Agent5Card data={agent5_safety} />
         <Agent6Card data={agent6_coordinator} decision={decision} urgency={urgency} />
       </div>
-
-      {/* Raw JSON toggle */}
-      <details className={styles.rawJson}>
-        <summary className={styles.rawSummary}>🔍 Raw Pipeline JSON Response</summary>
-        <pre className={styles.rawPre}>{JSON.stringify(result, null, 2)}</pre>
-      </details>
     </div>
   )
 }

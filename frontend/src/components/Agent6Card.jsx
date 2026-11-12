@@ -32,7 +32,6 @@ export default function Agent6Card({ data, decision, urgency }) {
     <AgentCard
       number={6}
       title="Coordinator Agent"
-      icon="🎯"
       status={d}
       statusColor={decisionColor(d)}
     >

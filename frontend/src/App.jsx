@@ -64,7 +64,7 @@ export default function App() {
                 <h2>Running 6-Agent Pipeline…</h2>
                 <p>Processing image quality, diagnosis, ABCD morphometrics, patient context, safety review, and final coordination.</p>
                 <div className={styles.loadingSteps}>
-                  {['🔬 Quality Check','🧠 Deep Learning Diagnosis','📐 ABCD Morphometrics','👤 Patient Risk Context','🛡️ Safety Veto Review','🎯 Coordinator Decision','🌡️ Grad-CAM Heatmap'].map(s => (
+                  {['Quality Check','Deep Learning Diagnosis','ABCD Morphometrics','Patient Risk Context','Safety Veto Review','Coordinator Decision','Grad-CAM Heatmap'].map(s => (
                     <div key={s} className={styles.loadingStep}><span className={styles.loadingDot} />{s}</div>
                   ))}
                 </div>

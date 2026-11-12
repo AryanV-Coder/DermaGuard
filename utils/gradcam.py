@@ -101,15 +101,23 @@ class GradCAM:
 
         cam_np = cam.squeeze().cpu().numpy()
         cam_np = cv2.resize(cam_np, (orig_w, orig_h))
-        cam_min, cam_max = cam_np.min(), cam_np.max()
-        if cam_max > cam_min:
+        cam_min, cam_max = float(cam_np.min()), float(cam_np.max())
+        if cam_max - cam_min > 1e-8:
             cam_norm = (cam_np - cam_min) / (cam_max - cam_min)
         else:
             cam_norm = np.zeros_like(cam_np)
 
-        # Create colored overlay
+        # Create colored overlay with attention-weighted blending
         heatmap_color = cv2.applyColorMap(np.uint8(255 * cam_norm), cv2.COLORMAP_JET)
-        overlay = cv2.addWeighted(orig_bgr, 0.6, heatmap_color, 0.4, 0)
+        # Suppress cold background (blue in JET) to preserve natural skin
+        threshold = 0.12
+        heat_mask = np.clip((cam_norm - threshold) / (1.0 - threshold), 0.0, 1.0)
+        alpha_map = np.power(heat_mask, 1.25) * 0.65
+        alpha_3c = np.repeat(alpha_map[:, :, np.newaxis], 3, axis=2)
+
+        overlay = (orig_bgr.astype(np.float32) * (1.0 - alpha_3c) + 
+                   heatmap_color.astype(np.float32) * alpha_3c)
+        overlay = np.clip(overlay, 0, 255).astype(np.uint8)
 
         return cam_norm, overlay, target_class_idx
 

@@ -83,7 +83,7 @@ export default function UploadPanel({ onAnalysis, onError, onReset, loading, set
     <form className={styles.panel} onSubmit={handleSubmit}>
       <div className={styles.panelHeader}>
         <span className={styles.panelIcon}>📋</span>
-        <h2 className={styles.panelTitle}>Case Ingestion</h2>
+        <h2 className={styles.panelTitle}>Input Lesion Image</h2>
       </div>
 
       {/* Dropzone */}
@@ -192,16 +192,10 @@ export default function UploadPanel({ onAnalysis, onError, onReset, loading, set
         disabled={!file || loading}
       >
         {loading
-          ? <><span className={styles.btnSpinner} /> Analyzing…</>
-          : <><span>⚡</span> Run 6-Agent Analysis</>
+          ? <><span className={styles.btnSpinner} /> Predicting…</>
+          : <><span>⚡</span> Predict & Run Pipeline</>
         }
       </button>
-
-      {/* Disclaimer */}
-      <p className={styles.disclaimer}>
-        ⚠️ For research & demo purposes only. Not a clinical diagnostic device.
-      </p>
     </form>
   )
 }
-

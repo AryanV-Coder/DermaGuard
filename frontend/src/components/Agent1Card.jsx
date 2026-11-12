@@ -10,7 +10,7 @@ export default function Agent1Card({ data }) {
   const statusColor = status === 'PASS' ? 'green' : status === 'FAIL' ? 'red' : 'amber'
 
   return (
-    <AgentCard number={1} title="Quality Supervisor" icon="🔬" status={status} statusColor={statusColor}>
+    <AgentCard number={1} title="Quality Supervisor" status={status} statusColor={statusColor}>
       <MetricsRow>
         <Metric label="Quality Score" value={(score * 100).toFixed(0) + '%'} color={status === 'PASS' ? 'green' : 'red'} />
         {metrics.blur !== undefined && <Metric label="Blur (Lap.)" value={metrics.blur?.toFixed(1) ?? '—'} sub="higher = sharper" />}
@@ -37,4 +37,3 @@ export default function Agent1Card({ data }) {
     </AgentCard>
   )
 }
-

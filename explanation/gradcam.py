@@ -69,29 +69,35 @@ class GradCAMExplainer:
             self._register_hooks()
 
     def _register_hooks(self):
-        """Finds target layer and registers forward & backward hooks."""
+        """Finds target layer and registers forward hook that attaches gradient hook directly to the activation tensor."""
         if self.target_layer is None:
             self.target_layer = self._find_target_layer(self.model)
 
         if self.target_layer is not None:
             def forward_hook(module, input, output):
-                self.activations = output.detach()
-
-            def backward_hook(module, grad_in, grad_out):
-                self.gradients = grad_out[0].detach()
+                # Clone activations to prevent in-place modification by subsequent layers
+                self.activations = output.detach().clone()
+                def tensor_backward_hook(grad):
+                    self.gradients = grad.detach().clone()
+                if output.requires_grad:
+                    output.register_hook(tensor_backward_hook)
 
             h1 = self.target_layer.register_forward_hook(forward_hook)
-            h2 = self.target_layer.register_full_backward_hook(backward_hook)
-            self.hook_handles.extend([h1, h2])
+            self.hook_handles.append(h1)
 
     def _find_target_layer(self, model: Any) -> Optional[Any]:
         """Automatically discovers the last convolutional layer."""
         if not TORCH_AVAILABLE or not isinstance(model, nn.Module):
             return None
 
-        # 1. EfficientNet conventions
-        if hasattr(model, "conv_head"):
+        # 1. EfficientNet conventions (timm or torchvision)
+        if hasattr(model, "conv_head") and isinstance(model.conv_head, nn.Module):
             return model.conv_head
+        if hasattr(model, "features") and len(model.features) > 0:
+            last = model.features[-1]
+            for m in reversed(list(last.modules())):
+                if isinstance(m, nn.Conv2d):
+                    return m
         if hasattr(model, "blocks") and len(model.blocks) > 0:
             last_block = model.blocks[-1]
             for m in reversed(list(last_block.modules())):
@@ -123,23 +129,6 @@ class GradCAMExplainer:
     ) -> Dict[str, Any]:
         """
         Generates Grad-CAM heatmap and blended overlay.
-
-        Args:
-            image_input: File path, numpy array (BGR or RGB), or PIL Image.
-            target_class_idx: Target class index (0-6).
-            target_class_name: Optional target class string (e.g. 'mel', 'nv').
-            colormap: OpenCV colormap (cv2.COLORMAP_JET or cv2.COLORMAP_TURBO).
-            alpha: Blend weight for original image (1-alpha for heatmap).
-            mask: Optional binary lesion mask for focus metric computation.
-
-        Returns:
-            Dict containing:
-                - overlay_base64: Data URI string for <img>
-                - original_base64: Data URI string of original image
-                - heatmap_base64: Data URI string of pure heatmap
-                - focus_inside_lesion_pct: % of activation inside lesion
-                - target_class: Class evaluated
-                - description: Medical visual summary
         """
         # Load and normalize original image
         orig_bgr, pil_rgb = self._load_image(image_input)
@@ -158,25 +147,39 @@ class GradCAMExplainer:
             try:
                 heatmap = self._compute_pytorch_gradcam(pil_rgb, target_class_idx, (w, h))
             except Exception as e:
-                # Log and fallback gracefully
+                print(f"[GradCAM] PyTorch Grad-CAM computation failed ({e}), falling back to morphology saliency.")
                 heatmap = None
 
         if heatmap is None:
             # High-fidelity morphology-guided saliency fallback
             heatmap = self._compute_morphology_saliency(orig_bgr, mask, target_name)
 
-        # Generate colored heatmap & overlay
-        heatmap_uint8 = (heatmap * 255).astype(np.uint8)
+        # 1. Colorize the normalized heatmap [0, 1]
+        heatmap_uint8 = (np.clip(heatmap, 0.0, 1.0) * 255).astype(np.uint8)
         heatmap_color = cv2.applyColorMap(heatmap_uint8, colormap)
 
-        # Blend: original image + heatmap
-        overlay_bgr = cv2.addWeighted(orig_bgr, alpha, heatmap_color, 1.0 - alpha, 0)
+        # 2. Attention-weighted overlay blending:
+        # In JET colormap, 0 is blue. We only blend heatmap where activation is present
+        # so that healthy skin is NOT covered by an unnatural blue haze!
+        threshold = 0.12
+        heat_mask = np.clip((heatmap - threshold) / (1.0 - threshold), 0.0, 1.0)
+        # Smooth ease-in curve: 0 at low attention, ramping to 0.65 opacity at peak attention
+        alpha_map = np.power(heat_mask, 1.25) * 0.65
+        alpha_3c = np.repeat(alpha_map[:, :, np.newaxis], 3, axis=2)
 
-        # Draw contour of highest activation area (hotspot)
-        hotspot_mask = (heatmap > 0.70).astype(np.uint8) * 255
+        overlay_bgr = (orig_bgr.astype(np.float32) * (1.0 - alpha_3c) + 
+                       heatmap_color.astype(np.float32) * alpha_3c)
+        overlay_bgr = np.clip(overlay_bgr, 0, 255).astype(np.uint8)
+
+        # 3. Draw contour of highest activation area (hotspot)
+        hotspot_mask = (heatmap > 0.60).astype(np.uint8) * 255
         hotspot_cnts, _ = cv2.findContours(hotspot_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if hotspot_cnts:
             cv2.drawContours(overlay_bgr, hotspot_cnts, -1, (0, 255, 255), 1, cv2.LINE_AA)
+
+        # 4. Pure heatmap: suppress zero-attention background to clean dark background
+        pure_alpha = np.repeat(np.clip(heatmap / 0.35, 0.0, 1.0)[:, :, np.newaxis], 3, axis=2)
+        pure_heatmap_bgr = (heatmap_color.astype(np.float32) * pure_alpha).astype(np.uint8)
 
         # Compute focus metric
         focus_pct = self._compute_focus_metric(heatmap, mask, orig_bgr)
@@ -187,7 +190,7 @@ class GradCAMExplainer:
         # Encode to Base64 Data URIs
         overlay_base64 = self._to_base64(overlay_bgr)
         orig_base64 = self._to_base64(orig_bgr)
-        heatmap_base64 = self._to_base64(heatmap_color)
+        heatmap_base64 = self._to_base64(pure_heatmap_bgr)
 
         description = self._generate_description(target_name, focus_pct, (int(peak_x), int(peak_y)), (w, h))
 
@@ -215,6 +218,11 @@ class GradCAMExplainer:
     ) -> np.ndarray:
         """Runs forward/backward pass and computes Grad-CAM activations."""
         self.model.eval()
+
+        # Ensure parameters participate in autograd
+        for p in self.model.parameters():
+            p.requires_grad = True
+
         from torchvision import transforms as T
 
         preprocess = T.Compose([
@@ -223,29 +231,51 @@ class GradCAMExplainer:
             T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
         ])
         t_img = preprocess(pil_img).unsqueeze(0).to(self.device)
+        t_img.requires_grad = True
 
         self.model.zero_grad()
+        self.gradients = None
+        self.activations = None
+
         output = self.model(t_img)
 
-        # Target score
-        one_hot = torch.zeros_like(output)
-        one_hot[0, target_class_idx] = 1.0
-        output.backward(gradient=one_hot, retain_graph=True)
+        if target_class_idx is None or target_class_idx < 0 or target_class_idx >= output.shape[1]:
+            target_class_idx = int(torch.argmax(output, dim=1).item())
+
+        score = output[0, target_class_idx]
+        score.backward(retain_graph=True)
 
         if self.gradients is None or self.activations is None:
-            raise RuntimeError("Hooks did not capture activations or gradients.")
+            raise RuntimeError(
+                f"Hooks did not capture activations (present: {self.activations is not None}) "
+                f"or gradients (present: {self.gradients is not None})."
+            )
 
-        # Global average pooling of gradients
+        # Global average pooling of gradients across spatial dimensions: (1, C, 1, 1)
         weights = torch.mean(self.gradients, dim=[2, 3], keepdim=True)
+        # Weighted combination of forward activation maps
         cam = torch.sum(weights * self.activations, dim=1, keepdim=True)
         cam = F.relu(cam)
 
         cam_np = cam.squeeze().cpu().numpy()
-        cam_min, cam_max = cam_np.min(), cam_np.max()
+        cam_min, cam_max = float(cam_np.min()), float(cam_np.max())
+
+        # If ReLU eliminated all activations, use absolute gradient weights
+        if cam_max <= 1e-7:
+            cam_abs = torch.abs(torch.sum(weights * self.activations, dim=1, keepdim=True))
+            cam_np = cam_abs.squeeze().cpu().numpy()
+            cam_min, cam_max = float(cam_np.min()), float(cam_np.max())
+
         if cam_max - cam_min > 1e-8:
             cam_np = (cam_np - cam_min) / (cam_max - cam_min)
         else:
-            cam_np = np.zeros_like(cam_np)
+            # Fallback to feature map intensity energy
+            act_energy = torch.mean(torch.abs(self.activations), dim=1).squeeze().cpu().numpy()
+            a_min, a_max = float(act_energy.min()), float(act_energy.max())
+            if a_max - a_min > 1e-8:
+                cam_np = (act_energy - a_min) / (a_max - a_min)
+            else:
+                cam_np = np.ones_like(cam_np) * 0.5
 
         w, h = target_size
         heatmap_resized = cv2.resize(cam_np, (w, h), interpolation=cv2.INTER_LINEAR)
@@ -265,10 +295,16 @@ class GradCAMExplainer:
         h, w = orig_bgr.shape[:2]
         gray = cv2.cvtColor(orig_bgr, cv2.COLOR_BGR2GRAY)
 
-        # 1. Base lesion mask if available, or Otsu threshold
-        if mask is None or mask.shape != (h, w):
-            blur = cv2.GaussianBlur(gray, (7, 7), 0)
+        # 1. Base lesion mask if available, or multi-stage Otsu threshold
+        if mask is None or mask.shape != (h, w) or (mask > 0).sum() < 50:
+            blur = cv2.GaussianBlur(gray, (9, 9), 0)
             _, otsu = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+            # Check center density: if inverted threshold captured borders instead of center, invert
+            ch_start, ch_end = int(h * 0.25), int(h * 0.75)
+            cw_start, cw_end = int(w * 0.25), int(w * 0.75)
+            center_density = (otsu[ch_start:ch_end, cw_start:cw_end] > 0).mean()
+            if center_density < 0.05:
+                otsu = cv2.bitwise_not(otsu)
             mask = otsu
 
         mask_f = (mask > 0).astype(np.float32)
@@ -284,34 +320,36 @@ class GradCAMExplainer:
         edges = cv2.Canny(gray, 30, 100).astype(np.float32)
         edge_density = cv2.GaussianBlur(edges, (21, 21), 0)
 
-        # 4. Synthesize class-specific attention map
+        # 4. Central spatial prior (dermoscopy lesions are centered)
+        cy, cx = h / 2.0, w / 2.0
+        yy, xx = np.ogrid[:h, :w]
+        center_prior = np.exp(-((xx - cx)**2 / (2 * (0.35 * w)**2) + (yy - cy)**2 / (2 * (0.35 * h)**2))).astype(np.float32)
+
+        # 5. Synthesize class-specific attention map
         if target_class == "mel":
-            # Melanoma attention emphasizes asymmetric border + pigment variegation
             saliency = 0.5 * local_std + 0.5 * edge_density
-            saliency = saliency * (mask_f + 0.15)
+            saliency = saliency * (mask_f + 0.25) * center_prior
         elif target_class in ("bcc", "akiec"):
-            # Keratin/vascular attention emphasizes high edge contrast + central erosion
-            saliency = 0.6 * edge_density + 0.4 * (255 - gray)
-            saliency = saliency * (mask_f + 0.10)
+            saliency = 0.6 * edge_density + 0.4 * (255.0 - gray.astype(np.float32))
+            saliency = saliency * (mask_f + 0.20) * center_prior
         else:
-            # Benign nevus / keratosis emphasizes homogeneous central pigment
             dist_map = cv2.distanceTransform((mask > 0).astype(np.uint8), cv2.DIST_L2, 5)
             if dist_map.max() > 0:
                 dist_norm = dist_map / dist_map.max()
             else:
-                dist_norm = mask_f
-            saliency = 0.6 * dist_norm * 255 + 0.4 * local_std
-            saliency = saliency * mask_f
+                dist_norm = center_prior
+            saliency = 0.6 * dist_norm * 255.0 + 0.4 * local_std
+            saliency = saliency * (mask_f + 0.15) * center_prior
 
         # Smooth and normalize to [0, 1]
-        smooth = cv2.GaussianBlur(saliency, (25, 25), 0)
-        s_min, s_max = smooth.min(), smooth.max()
+        smooth = cv2.GaussianBlur(saliency, (31, 31), 0)
+        s_min, s_max = float(smooth.min()), float(smooth.max())
         if s_max - s_min > 1e-6:
             norm_heatmap = (smooth - s_min) / (s_max - s_min)
         else:
-            norm_heatmap = np.zeros((h, w), dtype=np.float32)
+            norm_heatmap = center_prior
 
-        return norm_heatmap
+        return np.clip(norm_heatmap, 0.0, 1.0)
 
     def _compute_focus_metric(
         self,

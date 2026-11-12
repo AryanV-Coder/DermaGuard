@@ -1,42 +1,42 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg-deep:       #04080f;
-  --bg-panel:      #080e1a;
-  --bg-card:       rgba(10, 18, 36, 0.80);
-  --border:        rgba(255,255,255,0.08);
-  --border-hover:  rgba(79,172,254,0.45);
+  --bg-deep:       #f8fafc;
+  --bg-panel:      #ffffff;
+  --bg-card:       #ffffff;
+  --border:        #e2e8f0;
+  --border-hover:  #0d9488;
 
   --teal:         #0d9488;
-  --teal-light:   #2dd4bf;
-  --teal-glow:    rgba(13,148,136,0.18);
-  --sky:          #0ea5e9;
-  --sky-glow:     rgba(14,165,233,0.15);
-  --indigo:       #6366f1;
-  --indigo-glow:  rgba(99,102,241,0.15);
+  --teal-dark:    #0f766e;
+  --teal-light:   #14b8a6;
+  --teal-glow:    rgba(13, 148, 136, 0.08);
+  --sky:          #0284c7;
+  --sky-glow:     rgba(2, 132, 199, 0.08);
+  --indigo:       #4f46e5;
 
-  --green:        #10b981;
-  --amber:        #f59e0b;
-  --red:          #ef4444;
+  --green:        #059669;
+  --amber:        #d97706;
+  --red:          #dc2626;
 
-  --text-primary: #f0f9ff;
-  --text-muted:   #94a3b8;
+  --text-primary: #0f172a;
+  --text-muted:   #475569;
   --text-dim:     #64748b;
 
   --radius-sm:    0.5rem;
-  --radius-md:    0.875rem;
-  --radius-lg:    1.25rem;
-  --radius-xl:    1.75rem;
+  --radius-md:    0.75rem;
+  --radius-lg:    1rem;
+  --radius-xl:    1.25rem;
 
-  --shadow-card:  0 8px 32px rgba(0,0,0,0.5);
-  --shadow-glow:  0 0 40px rgba(13,148,136,0.12);
+  --shadow-card:  0 1px 3px rgba(15, 23, 42, 0.06), 0 4px 16px rgba(15, 23, 42, 0.04);
+  --shadow-glow:  0 0 20px rgba(13, 148, 136, 0.1);
 }
 
 html, body, #root {
   height: 100%;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   background: var(--bg-deep);
   color: var(--text-primary);
   line-height: 1.6;
@@ -45,6 +45,6 @@ html, body, #root {
 
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 
 button { font-family: inherit; }
