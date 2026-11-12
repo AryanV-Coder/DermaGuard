@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import styles from './HeatmapViewer.module.css'
 
 const CLASS_FULL_NAMES = {
@@ -11,16 +10,9 @@ const CLASS_FULL_NAMES = {
   df: 'Dermatofibroma',
 }
 
-const VIEWS = [
-  { key: 'gradcam_overlay', label: 'Grad-CAM Overlay', desc: 'CAM fused with original' },
-  { key: 'original_image', label: 'Original Image', desc: 'Input dermoscopy image' },
-  { key: 'pure_heatmap', label: 'Heatmap Only', desc: 'Raw activation map' },
-]
-
 export default function HeatmapViewer({ visualizations, predictedLabel }) {
-  const [activeView, setActiveView] = useState('gradcam_overlay')
-
-  const src = visualizations?.[activeView]
+  const overlaySrc = visualizations?.gradcam_overlay
+  const originalSrc = visualizations?.original_image
   const focusPct = visualizations?.focus_inside_lesion_pct
   const description = visualizations?.description
   const targetClass = visualizations?.target_class || predictedLabel
@@ -46,30 +38,39 @@ export default function HeatmapViewer({ visualizations, predictedLabel }) {
         )}
       </div>
 
-      {/* View Switcher */}
-      <div className={styles.viewTabs}>
-        {VIEWS.map(v => (
-          <button
-            key={v.key}
-            className={`${styles.tab} ${activeView === v.key ? styles.tabActive : ''}`}
-            onClick={() => setActiveView(v.key)}
-            disabled={!visualizations?.[v.key]}
-          >
-            <span className={styles.tabLabel}>{v.label}</span>
-            <span className={styles.tabDesc}>{v.desc}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* Image Display */}
-      <div className={styles.imageWrapper}>
-        {src ? (
-          <img src={src} alt={activeView} className={styles.heatmapImg} />
-        ) : (
-          <div className={styles.noImage}>
-            <p>Visualization not available</p>
+      {/* Side-by-Side Images: Original vs Grad-CAM Overlay */}
+      <div className={styles.comparisonGrid}>
+        <div className={styles.imageColumn}>
+          <div className={styles.columnHeader}>
+            <span className={styles.columnTitle}>Original Image</span>
+            <span className={styles.columnSubtitle}>Input dermoscopy</span>
           </div>
-        )}
+          <div className={styles.imageWrapper}>
+            {originalSrc ? (
+              <img src={originalSrc} alt="Original dermoscopy lesion" className={styles.previewImg} />
+            ) : (
+              <div className={styles.noImage}>
+                <p>Original image not available</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className={styles.imageColumn}>
+          <div className={styles.columnHeader}>
+            <span className={styles.columnTitle}>Grad-CAM Heatmap</span>
+            <span className={styles.columnSubtitle}>Visual attention overlay</span>
+          </div>
+          <div className={styles.imageWrapper}>
+            {overlaySrc ? (
+              <img src={overlaySrc} alt="Grad-CAM visual heatmap overlay" className={styles.previewImg} />
+            ) : (
+              <div className={styles.noImage}>
+                <p>Heatmap overlay not available</p>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Focus progress bar */}

@@ -31,62 +31,75 @@
 .focusPct { font-size: 1.3rem; font-weight: 800; color: var(--teal); line-height: 1; }
 .focusLabel { font-size: 0.65rem; color: var(--text-dim); margin-top: 0.2rem; text-align: center; }
 
-/* View tabs */
-.viewTabs {
-  display: flex;
-  gap: 0.5rem;
+/* Comparison Grid (Side-by-Side) */
+.comparisonGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
   padding: 0 1.5rem;
-  margin-bottom: 1rem;
-  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
 }
-.tab {
-  flex: 1;
+
+@media (max-width: 768px) {
+  .comparisonGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.imageColumn {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 0.1rem;
-  padding: 0.5rem 0.6rem;
-  background: #f8fafc;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all 0.2s;
-  color: var(--text-muted);
-  font-family: inherit;
-  min-width: 100px;
+  gap: 0.5rem;
 }
-.tab:hover:not(:disabled) { border-color: var(--teal); color: var(--text-primary); }
-.tab:disabled { opacity: 0.35; cursor: not-allowed; }
-.tabActive {
-  background: #f0fdfa;
-  border-color: var(--teal);
-  color: var(--teal);
-}
-.tabLabel { font-size: 0.8rem; font-weight: 600; }
-.tabDesc { font-size: 0.65rem; color: inherit; opacity: 0.8; }
 
-/* Image */
+.columnHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0 0.25rem;
+}
+
+.columnTitle {
+  font-size: 0.825rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.columnSubtitle {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+/* Image wrappers */
 .imageWrapper {
   background: #0f172a;
+  border-radius: var(--radius-md);
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 280px;
+  min-height: 240px;
+  max-height: 380px;
+  border: 1px solid var(--border);
 }
-.heatmapImg {
+
+.previewImg {
   width: 100%;
-  max-height: 420px;
+  height: 100%;
+  max-height: 380px;
   object-fit: contain;
   display: block;
 }
+
 .noImage {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.5rem;
   color: var(--text-dim);
-  font-size: 0.875rem;
-  padding: 3rem;
+  font-size: 0.85rem;
+  padding: 2.5rem 1rem;
+  text-align: center;
 }
 
 /* Focus bar */
